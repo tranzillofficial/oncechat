@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, KeyboardEvent, ChangeEvent, FormEvent, ClipboardEvent } from 'react'
+import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, FormEvent, ClipboardEvent } from 'react'
 import VoiceRecorder from './VoiceRecorder'
 
 interface MessageInputProps {
@@ -12,10 +12,18 @@ interface MessageInputProps {
   disabled?: boolean
 }
 
-const COMMON_EMOJIS = [
-  '😀', '😂', '😍', '😎', '😊', '👍', '❤️', '🔥', '🎉', '🙏',
-  '😭', '🤔', '🙈', '🚀', '💯', '✨', '👀', '🤐', '😮', '😴',
-  '🤡', '💩', '✌️', '💪', '🤝', '🥳', '👇', '👈', '👉', '👋'
+const EXTENDED_EMOJIS = [
+  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '🥹', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍',
+  '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥸', '🤩',
+  '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭',
+  '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🫣', '🤗', '🫡',
+  '🤔', '🤭', '🫢', '🤫', '🫠', '🤥', '😶', '😐', '😑', '🫨', '😬', '🙄', '😯', '😦', '😧', '😮',
+  '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠',
+  '😈', '👿', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '👋', '🤚', '🖐️', '✋', '🖖',
+  '👌', '🤌', '🤏', '✌️', '🤞', '🫰', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍',
+  '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🫶', '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪',
+  '❤️', '🩷', '🧡', '💛', '💚', '💙', '🩵', '💜', '🤎', '🖤', '🩶', '🤍', '💔', '❤️‍🔥', '❤️‍🩹', '❣️',
+  '💕', '💞', '💓', '💗', '💖', '💘', '💝', '🔥', '💥', '✨', '🌟', '💫', '🎉', '🎊', '💯', '🚀'
 ]
 
 export default function MessageInput({
@@ -33,8 +41,34 @@ export default function MessageInput({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const emojiPickerRef = useRef<HTMLDivElement>(null)
+  const emojiBtnRef = useRef<HTMLButtonElement>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isTypingRef = useRef(false)
+
+  // Auto-close emoji picker on click outside
+  useEffect(() => {
+    if (!showEmojiPicker) return
+
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
+      const target = e.target as Node
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(target) &&
+        emojiBtnRef.current &&
+        !emojiBtnRef.current.contains(target)
+      ) {
+        setShowEmojiPicker(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
+  }, [showEmojiPicker])
 
   function handleTextChange(e: ChangeEvent<HTMLTextAreaElement>) {
     setText(e.target.value)
@@ -118,18 +152,19 @@ export default function MessageInput({
 
   return (
     <div className="relative" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
-      {/* WhatsApp-style Emoji Picker Popup */}
+      {/* Scrollable Extended Emoji Picker Popup */}
       {showEmojiPicker && (
         <div
-          className="absolute bottom-full left-3 mb-2 p-3 rounded-2xl shadow-2xl border backdrop-blur-md z-40 grid grid-cols-6 gap-2 w-64 animate-in fade-in slide-in-from-bottom-2"
+          ref={emojiPickerRef}
+          className="absolute bottom-full left-3 mb-2 p-3 rounded-2xl shadow-2xl border backdrop-blur-md z-40 grid grid-cols-7 gap-1.5 w-72 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 custom-scrollbar"
           style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
         >
-          {COMMON_EMOJIS.map((emoji) => (
+          {EXTENDED_EMOJIS.map((emoji, idx) => (
             <button
-              key={emoji}
+              key={`${emoji}-${idx}`}
               type="button"
               onClick={() => addEmoji(emoji)}
-              className="text-xl p-1.5 rounded-xl hover:bg-white/10 transition-transform active:scale-125"
+              className="text-xl p-1 rounded-xl hover:bg-white/10 transition-transform active:scale-125 flex items-center justify-center"
             >
               {emoji}
             </button>
@@ -220,6 +255,7 @@ export default function MessageInput({
 
             {/* WhatsApp-style Emoji Picker Button (Before Voice Recorder) */}
             <button
+              ref={emojiBtnRef}
               type="button"
               onClick={() => setShowEmojiPicker((v) => !v)}
               disabled={disabled}
@@ -249,6 +285,7 @@ export default function MessageInput({
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onFocus={() => setShowEmojiPicker(false)}
           placeholder={pendingFile ? 'Send image… (Press Enter)' : 'Message…'}
           disabled={disabled || !!pendingFile}
           rows={1}

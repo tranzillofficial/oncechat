@@ -107,7 +107,7 @@ export default function MessageList({
               )}
 
               <div
-                className={`max-w-[82%] text-sm leading-relaxed ${isOwn ? 'rounded-br-sm' : 'rounded-bl-sm'} ${
+                className={`max-w-[82%] min-w-[72px] text-sm leading-relaxed ${isOwn ? 'rounded-br-sm' : 'rounded-bl-sm'} ${
                   msg.message_type === 'image'
                     ? 'p-1.5 rounded-2xl'
                     : msg.message_type === 'voice'
@@ -135,9 +135,9 @@ export default function MessageList({
                   />
                 )}
 
-                <div className={`flex items-center gap-1 ${msg.message_type === 'image' ? 'px-1 pt-1' : 'mt-1'} ${isOwn ? 'justify-end' : 'justify-start'}`}
+                <div className={`flex items-center gap-1 shrink-0 whitespace-nowrap select-none ${msg.message_type === 'image' ? 'px-1 pt-1' : 'mt-1'} ${isOwn ? 'justify-end' : 'justify-start'}`}
                   style={{ color: 'var(--text-secondary)' }}>
-                  <span className="text-[10px] opacity-80">{fmtTime(msg.created_at)}</span>
+                  <span className="text-[10px] opacity-80 whitespace-nowrap">{fmtTime(msg.created_at)}</span>
                   {isOwn && <CheckIcon seen={seen} />}
                 </div>
               </div>
