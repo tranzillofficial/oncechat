@@ -415,7 +415,7 @@ export default function MediaMessage({
     <>
       <div className="flex flex-col gap-1">
         {oneTimeView && isOwn && (
-          <span className="text-[10px]" style={{ color: 'var(--accent-light)' }}>🔥 One-time view</span>
+          <span className="text-[10px] font-medium" style={{ color: 'var(--accent-light)' }}>🔥 One-time view</span>
         )}
         {/* Click opens lightbox — no external tab link */}
         <ProtectedImage
@@ -424,7 +424,7 @@ export default function MediaMessage({
           height={180}
           className="rounded-xl object-cover max-w-[240px] max-h-[180px]"
           onClick={() => setLightboxOpen(true)}
-          blurred={blurred}
+          blurred={blurred || (oneTimeView && isOwn)}
         />
       </div>
 

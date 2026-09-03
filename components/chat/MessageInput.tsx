@@ -24,7 +24,6 @@ export default function MessageInput({
   const [oneTimeView, setOneTimeView] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const cameraInputRef = useRef<HTMLInputElement>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isTypingRef = useRef(false)
 
@@ -152,33 +151,6 @@ export default function MessageInput({
         {/* Media Icons Group (Left Side) */}
         {!pendingFile && (
           <div className="flex items-center gap-0.5 flex-shrink-0">
-            {/* Camera input */}
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              disabled={disabled}
-              className="p-2 rounded-xl transition-colors disabled:opacity-40"
-              style={{ color: 'var(--text-secondary)' }}
-              aria-label="Take photo"
-              title="Take photo"
-            >
-              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"
-                viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                <circle cx="12" cy="13" r="4" />
-              </svg>
-            </button>
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="user"
-              onChange={handleFileChange}
-              className="hidden"
-              aria-hidden="true"
-              tabIndex={-1}
-            />
-
             {/* File gallery upload */}
             <button
               type="button"

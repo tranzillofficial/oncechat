@@ -202,26 +202,30 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
   }
 
   async function handleSendFile(file: File, oneTimeView: boolean) {
-    if (!sessionId || !roomId || isUploading) return
-    setIsUploading(true)
-    try {
-      const fd = new FormData()
-      fd.append('file', file); fd.append('sessionId', sessionId)
-      fd.append('roomId', roomId); fd.append('mediaType', 'image')
-      fd.append('oneTimeView', String(oneTimeView))
-      const res  = await fetch('/api/media/upload', { method: 'POST', body: fd })
-      const data = await res.json()
-      if (!res.ok) { alert(data.error || 'Upload failed'); return }
-      await sendMessage({
-        messageType: 'image',
-        content: null,
-        storagePath: data.storagePath,
-        expiresAt: data.expiresAt,
-        oneTimeView: data.oneTimeView ?? false,
-      })
-    } finally {
-      setIsUploading(false)
-    }
+    if (!sessionId || !roomId) return
+
+    // Do background upload non-blocking so UI adds message instantly
+    (async () => {
+      try {
+        const fd = new FormData()
+        fd.append('file', file); fd.append('sessionId', sessionId)
+        fd.append('roomId', roomId); fd.append('mediaType', 'image')
+        fd.append('oneTimeView', String(oneTimeView))
+        const res  = await fetch('/api/media/upload', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (!res.ok) { alert(data.error || 'Upload failed'); return }
+        await sendMessage({
+          messageType: 'image',
+          content: null,
+          storagePath: data.storagePath,
+          expiresAt: data.expiresAt,
+          oneTimeView: data.oneTimeView ?? false,
+        })
+      } catch (err) {
+        console.error('[upload failed]', err)
+        alert('Upload failed')
+      }
+    })()
   }
 
   async function handleSendVoice(blob: Blob, mimeType: string) {
@@ -311,7 +315,7 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
       <MessageInput
         onSendText={handleSendText} onSendFile={handleSendFile} onSendVoice={handleSendVoice}
         onTypingStart={() => broadcastTyping(true)} onTypingStop={() => broadcastTyping(false)}
-        disabled={roomClosed || isUploading}
+        disabled={roomClosed}
       />
     </div>
   )
