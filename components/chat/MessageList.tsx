@@ -62,8 +62,8 @@ export default function MessageList({ messages, sessionId, currentUsername, admi
             }`}>
 
             {showName && (
-              <span className="text-xs mb-1 px-1" style={{ color: 'var(--text-secondary)' }}>
-                {currentUsername}
+              <span className="text-xs mb-1 px-1 font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                {adminView ? (msg.sender_session_id?.slice(0, 8) || 'User') : currentUsername}
               </span>
             )}
 

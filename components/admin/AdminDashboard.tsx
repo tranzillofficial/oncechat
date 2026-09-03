@@ -83,13 +83,22 @@ function Td({ children, mono }: { children: React.ReactNode; mono?: boolean }) {
 function RoomHistoryModal({
   room,
   messages,
+  sessions,
   onClose,
 }: {
   room: Room
   messages: Message[]
+  sessions: Session[]
   onClose: () => void
 }) {
-  const roomMessages = messages.filter((m) => m.room_id === room.id)
+  // Sort messages chronologically (oldest to newest)
+  const roomMessages = [...messages]
+    .filter((m) => m.room_id === room.id)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+  // Map session_id to username
+  const sessionMap = new Map<string, string>()
+  sessions.forEach((s) => sessionMap.set(s.id, s.username))
 
   return (
     <div
@@ -98,14 +107,14 @@ function RoomHistoryModal({
       onClick={onClose}
     >
       <div
-        className="flex flex-col w-full max-w-xl h-[80vh] rounded-2xl overflow-hidden"
+        className="flex flex-col w-full max-w-2xl h-[85vh] rounded-2xl overflow-hidden"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3"
           style={{ borderBottom: '1px solid var(--border)' }}>
           <h2 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
-            Room: {room.name}
+            🏠 Room Log: {room.name}
           </h2>
           <button onClick={onClose} style={{ color: 'var(--text-secondary)' }} aria-label="Close">✕</button>
         </div>
@@ -168,6 +177,11 @@ export default function AdminDashboard() {
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [signedUrlsMap, setSignedUrlsMap] = useState<Record<string, string>>({})
 
+  // Accordion Expand states
+  const [expandedRoomChats, setExpandedRoomChats] = useState<Record<string, boolean>>({})
+  const [expandedVisitorProfiles, setExpandedVisitorProfiles] = useState<Record<string, boolean>>({})
+  const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({})
+
   // Grab the session token for preserve-media requests
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -195,7 +209,7 @@ export default function AdminDashboard() {
 
       // Fetch signed URLs for media messages
       const mediaPaths = (msgRes.data ?? [])
-        .filter((m) => m.storage_path && m.message_type === 'image')
+        .filter((m) => m.storage_path)
         .map((m) => m.storage_path!)
 
       if (mediaPaths.length) {
@@ -287,31 +301,47 @@ export default function AdminDashboard() {
 
   // Filter lists based on search
   const q = search.toLowerCase().trim()
-  const filteredRooms = rooms.filter(
-    (r) => !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)
-  )
+  const filteredRooms = rooms.filter((r) => {
+    if (!q) return true
+    const roomMembers = members.filter((m) => m.room_id === r.id)
+    const memberUsernames = roomMembers.map((m) => m.username.toLowerCase())
+    return (
+      r.name.toLowerCase().includes(q) ||
+      r.id.toLowerCase().includes(q) ||
+      memberUsernames.some((u) => u.includes(q))
+    )
+  })
+
   const filteredSessions = sessions.filter(
     (s) => !q || s.username.toLowerCase().includes(q) || s.id.toLowerCase().includes(q) || s.visitor_id.toLowerCase().includes(q)
   )
-  const filteredVisitors = visitors.filter(
-    (v) => !q || (v.ip_hash ?? '').toLowerCase().includes(q) || (v.user_agent ?? '').toLowerCase().includes(q)
-  )
-  const filteredMessages = messages.filter((m) => {
+
+  const filteredVisitors = visitors.filter((v) => {
     if (!q) return true
-    const room = rooms.find((r) => r.id === m.room_id)
+    const visitorSessions = sessions.filter((s) => s.visitor_id === v.id)
+    const names = visitorSessions.map((s) => s.username.toLowerCase())
     return (
-      (m.content ?? '').toLowerCase().includes(q) ||
-      (room?.name ?? '').toLowerCase().includes(q) ||
-      (m.storage_path ?? '').toLowerCase().includes(q)
+      (v.ip_hash ?? '').toLowerCase().includes(q) ||
+      (v.fingerprint ?? '').toLowerCase().includes(q) ||
+      (v.user_agent ?? '').toLowerCase().includes(q) ||
+      names.some((n) => n.includes(q))
     )
   })
 
   const mediaMessages = messages.filter((m) => m.message_type === 'image' || m.message_type === 'voice')
 
+  // Group sessions by visitor_id
+  const groupedVisitorSessionsMap = new Map<string, Session[]>()
+  sessions.forEach((s) => {
+    const list = groupedVisitorSessionsMap.get(s.visitor_id) || []
+    list.push(s)
+    groupedVisitorSessionsMap.set(s.visitor_id, list)
+  })
+
   const TABS: { id: Tab; label: string; count: number }[] = [
     { id: 'rooms',    label: 'Rooms',    count: rooms.length },
     { id: 'messages', label: 'Rooms & Messages', count: rooms.length },
-    { id: 'sessions', label: 'User Sessions', count: sessions.length },
+    { id: 'sessions', label: 'User Sessions', count: groupedVisitorSessionsMap.size },
     { id: 'visitors', label: 'Visitors (Smart Profile)', count: visitors.length },
     { id: 'media',    label: 'Media Gallery', count: mediaMessages.length },
   ]
@@ -367,7 +397,7 @@ export default function AdminDashboard() {
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search usernames, room names, IP hashes…"
+          placeholder="Search usernames, room names, IP hashes, fingerprints…"
           className="w-full max-w-md h-10 rounded-xl px-3.5 text-sm outline-none"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
           aria-label="Search"
@@ -422,10 +452,10 @@ export default function AdminDashboard() {
                   <Td>
                     <button
                       onClick={() => setRoomModal(r)}
-                      className="text-xs px-2 py-1 rounded-lg font-medium"
-                      style={{ color: 'var(--accent-light)', border: '1px solid rgba(124,58,237,0.3)' }}
+                      className="text-xs px-2.5 py-1 rounded-lg font-medium"
+                      style={{ color: 'var(--accent-light)', border: '1px solid rgba(124,58,237,0.3)', background: 'var(--surface-2)' }}
                     >
-                      View Chat ({messages.filter(m => m.room_id === r.id).length})
+                      View Chat Log ({messages.filter(m => m.room_id === r.id).length})
                     </button>
                   </Td>
                 </Tr>
@@ -435,81 +465,105 @@ export default function AdminDashboard() {
           </Table>
         )}
 
-        {/* ── ROOMS & MESSAGES (Grouped by Room) ── */}
+        {/* ── ROOMS & MESSAGES (Collapsible Grouped Rooms) ── */}
         {tab === 'messages' && (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             {filteredRooms.map((r) => {
               const roomMsgs = messages.filter((m) => m.room_id === r.id)
               const roomMembers = members.filter((m) => m.room_id === r.id)
+              const isExpanded = !!expandedRoomChats[r.id]
+
+              // Group room members by IP Hash to show usernames used by each distinct user
+              const memberIpMap = new Map<string, string[]>()
+              roomMembers.forEach((rm) => {
+                const sess = sessions.find((s) => s.id === rm.session_id)
+                const vis = visitors.find((v) => v.id === sess?.visitor_id)
+                const ipKey = vis?.ip_hash ? `${vis.ip_hash.slice(0, 10)}…` : 'Unknown IP'
+                const names = memberIpMap.get(ipKey) || []
+                if (!names.includes(rm.username)) names.push(rm.username)
+                memberIpMap.set(ipKey, names)
+              })
+
               return (
                 <div key={r.id} className="p-4 rounded-xl flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                  <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: 'var(--border)' }}>
+                  <div className="flex items-center justify-between border-b pb-2 flex-wrap gap-2" style={{ borderColor: 'var(--border)' }}>
                     <div className="flex items-center gap-3">
                       <span className="font-bold text-base" style={{ color: 'var(--accent-light)' }}>🏠 Room: {r.name}</span>
                       <Badge color={r.status === 'active' ? 'green' : r.status === 'closed' ? 'red' : 'yellow'}>
                         {r.status}
                       </Badge>
-                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Created: {formatDate(r.created_at)}</span>
+                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Messages: ({roomMsgs.length})</span>
                     </div>
-                    <button
-                      onClick={() => setRoomModal(r)}
-                      className="text-xs px-3 py-1 rounded-lg font-medium"
-                      style={{ background: 'var(--surface-2)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}
-                    >
-                      Open Live Chat Log
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setExpandedRoomChats((prev) => ({ ...prev, [r.id]: !prev[r.id] }))}
+                        className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+                        style={{ background: 'var(--accent)', color: '#fff' }}
+                      >
+                        {isExpanded ? 'Fold Chat 🔼' : 'Extend Chat 🔽'}
+                      </button>
+                      <button
+                        onClick={() => setRoomModal(r)}
+                        className="text-xs px-3 py-1.5 rounded-lg font-medium"
+                        style={{ background: 'var(--surface-2)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}
+                      >
+                        Live Log View
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Room Members & IPs */}
+                  {/* Room Members grouped by User (showing all aliases per user) */}
                   <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Members in room:</span>
-                    {roomMembers.map((rm) => {
-                      const sess = sessions.find((s) => s.id === rm.session_id)
-                      const vis = visitors.find((v) => v.id === sess?.visitor_id)
-                      return (
-                        <span key={rm.id} className="px-2 py-0.5 rounded-md" style={{ background: 'var(--surface-2)', color: 'var(--text-primary)' }}>
-                          👤 {rm.username} <span className="font-mono text-[10px] opacity-75">(IP Hash: {vis?.ip_hash?.slice(0, 10) ?? 'unknown'}…)</span>
-                        </span>
-                      )
-                    })}
-                    {roomMembers.length === 0 && <span style={{ color: 'var(--text-secondary)' }}>No members joined yet</span>}
+                    <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Distinct Users ({memberIpMap.size}):</span>
+                    {Array.from(memberIpMap.entries()).map(([ipHash, names]) => (
+                      <span key={ipHash} className="px-2.5 py-1 rounded-md flex items-center gap-1.5" style={{ background: 'var(--surface-2)', color: 'var(--text-primary)' }}>
+                        <span className="font-bold text-purple-400">👤 User ({ipHash}):</span>
+                        <span className="font-semibold text-white">{names.join(', ')}</span>
+                      </span>
+                    ))}
+                    {memberIpMap.size === 0 && <span style={{ color: 'var(--text-secondary)' }}>No members joined yet</span>}
                   </div>
 
-                  {/* Room Messages List */}
-                  <Table headers={['Sender Session', 'Type', 'Content / Media', 'Seen', 'Sent At']}>
-                    {roomMsgs.map((m) => {
-                      const sess = sessions.find((s) => s.id === m.sender_session_id)
-                      const url = m.storage_path ? signedUrlsMap[m.storage_path] : null
-                      return (
-                        <Tr key={m.id}>
-                          <Td><span className="font-medium text-xs">{sess?.username ?? 'Unknown'}</span> <span className="text-[10px] font-mono opacity-60">({m.sender_session_id.slice(0, 6)}…)</span></Td>
-                          <Td><Badge color={m.message_type === 'text' ? 'default' : 'yellow'}>{m.message_type}</Badge></Td>
-                          <Td>
-                            {m.message_type === 'text' ? (
-                              <span className="text-xs" style={{ color: 'var(--text-primary)' }}>{m.content}</span>
-                            ) : m.message_type === 'image' && url ? (
-                              <div className="flex items-center gap-2">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={url} alt="Thumb" className="w-10 h-10 rounded-md object-cover border border-purple-500/30" />
-                                <button
-                                  onClick={() => setPreviewImage(url)}
-                                  className="text-xs px-2 py-1 rounded-md"
-                                  style={{ background: 'var(--surface-2)', color: 'var(--accent-light)' }}
-                                >
-                                  View Full
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>📎 {m.storage_path ?? 'Media'}</span>
-                            )}
-                          </Td>
-                          <Td><Badge color={m.seen_at ? 'green' : 'default'}>{m.seen_at ? 'Yes' : 'No'}</Badge></Td>
-                          <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(m.created_at)}</span></Td>
-                        </Tr>
-                      )
-                    })}
-                    {roomMsgs.length === 0 && <Tr><Td><span style={{ color: 'var(--text-secondary)' }}>No messages in this room</span></Td></Tr>}
-                  </Table>
+                  {/* Collapsible Room Messages List */}
+                  {isExpanded && (
+                    <Table headers={['Sender', 'Type', 'Content / Media Preview', 'Seen', 'Sent At']}>
+                      {roomMsgs.map((m) => {
+                        const sess = sessions.find((s) => s.id === m.sender_session_id)
+                        const url = m.storage_path ? signedUrlsMap[m.storage_path] : null
+                        return (
+                          <Tr key={m.id}>
+                            <Td><span className="font-semibold text-xs" style={{ color: 'var(--accent-light)' }}>{sess?.username ?? 'Unknown'}</span> <span className="text-[10px] font-mono opacity-60">({m.sender_session_id.slice(0, 6)}…)</span></Td>
+                            <Td><Badge color={m.message_type === 'text' ? 'default' : 'yellow'}>{m.message_type}</Badge></Td>
+                            <Td>
+                              {m.message_type === 'text' ? (
+                                <span className="text-xs" style={{ color: 'var(--text-primary)' }}>{m.content}</span>
+                              ) : m.message_type === 'image' && url ? (
+                                <div className="flex items-center gap-2">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={url} alt="Thumb" className="w-10 h-10 rounded-md object-cover border border-purple-500/30" />
+                                  <button
+                                    onClick={() => setPreviewImage(url)}
+                                    className="text-xs px-2.5 py-1 rounded-md font-medium"
+                                    style={{ background: 'var(--accent)', color: '#fff' }}
+                                  >
+                                    View Full
+                                  </button>
+                                </div>
+                              ) : m.message_type === 'voice' && url ? (
+                                <audio controls src={url} className="h-8 max-w-[200px]" />
+                              ) : (
+                                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>📎 {m.storage_path ?? 'Media'}</span>
+                              )}
+                            </Td>
+                            <Td><Badge color={m.seen_at ? 'green' : 'default'}>{m.seen_at ? 'Yes' : 'No'}</Badge></Td>
+                            <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(m.created_at)}</span></Td>
+                          </Tr>
+                        )
+                      })}
+                      {roomMsgs.length === 0 && <Tr><Td><span style={{ color: 'var(--text-secondary)' }}>No messages in this room</span></Td></Tr>}
+                    </Table>
+                  )}
                 </div>
               )
             })}
@@ -517,29 +571,81 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ── SESSIONS ── */}
+        {/* ── SESSIONS (Grouped by User Tile) ── */}
         {tab === 'sessions' && (
-          <Table headers={['Username', 'Session ID', 'Visitor IP Hash', 'Started', 'Last Seen', 'Active']}>
-            {filteredSessions.map((s) => {
-              const vis = visitors.find((v) => v.id === s.visitor_id)
-              return (
-                <Tr key={s.id}>
-                  <Td><span className="font-medium text-sm" style={{ color: 'var(--accent-light)' }}>👤 {s.username}</span></Td>
-                  <Td mono>{s.id.slice(0, 12)}…</Td>
-                  <Td mono>{vis?.ip_hash ? `${vis.ip_hash.slice(0, 12)}…` : '—'}</Td>
-                  <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(s.started_at)}</span></Td>
-                  <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(s.last_seen)}</span></Td>
-                  <Td>
-                    <Badge color={s.is_active ? 'green' : 'default'}>{s.is_active ? 'Active' : 'Ended'}</Badge>
-                  </Td>
-                </Tr>
-              )
-            })}
-            {filteredSessions.length === 0 && <Tr><Td><span style={{ color: 'var(--text-secondary)' }}>No sessions</span></Td></Tr>}
-          </Table>
+          <div className="flex flex-col gap-4">
+            {Array.from(groupedVisitorSessionsMap.entries())
+              .filter(([vId, sList]) => {
+                if (!q) return true
+                const vis = visitors.find((v) => v.id === vId)
+                return (
+                  sList.some((s) => s.username.toLowerCase().includes(q)) ||
+                  (vis?.ip_hash ?? '').toLowerCase().includes(q) ||
+                  (vis?.fingerprint ?? '').toLowerCase().includes(q)
+                )
+              })
+              .map(([vId, sList]) => {
+                const vis = visitors.find((v) => v.id === vId)
+                const isExpanded = !!expandedSessions[vId]
+                const uniqueNames = Array.from(new Set(sList.map((s) => s.username)))
+                const activeSession = sList.find((s) => s.is_active)
+
+                return (
+                  <div key={vId} className="p-4 rounded-xl flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div className="flex items-center justify-between border-b pb-2 flex-wrap gap-2" style={{ borderColor: 'var(--border)' }}>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-sm" style={{ color: 'var(--accent-light)' }}>
+                          👤 User Profile ({sList.length} Sessions)
+                        </span>
+                        <span className="text-xs font-mono px-2 py-0.5 rounded" style={{ background: 'var(--surface-2)', color: 'var(--text-primary)' }}>
+                          IP Hash: {vis?.ip_hash ? `${vis.ip_hash.slice(0, 10)}…` : 'Unknown'}
+                        </span>
+                        <Badge color={activeSession ? 'green' : 'default'}>
+                          {activeSession ? 'Currently Active' : 'Offline'}
+                        </Badge>
+                      </div>
+
+                      <button
+                        onClick={() => setExpandedSessions((prev) => ({ ...prev, [vId]: !prev[vId] }))}
+                        className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+                        style={{ background: 'var(--surface-2)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}
+                      >
+                        {isExpanded ? 'Hide Sessions 🔼' : 'Extend Sessions 🔽'}
+                      </button>
+                    </div>
+
+                    {/* Summary Badges */}
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                      <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Usernames used:</span>
+                      {uniqueNames.map((n) => (
+                        <span key={n} className="px-2 py-0.5 rounded text-[11px] font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
+                          {n}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Collapsible Session List */}
+                    {isExpanded && (
+                      <Table headers={['Username', 'Session ID', 'Started At', 'Last Seen', 'State']}>
+                        {sList.map((s) => (
+                          <Tr key={s.id}>
+                            <Td><span className="font-medium text-xs" style={{ color: 'var(--text-primary)' }}>{s.username}</span></Td>
+                            <Td mono>{s.id.slice(0, 14)}…</Td>
+                            <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(s.started_at)}</span></Td>
+                            <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(s.last_seen)}</span></Td>
+                            <Td><Badge color={s.is_active ? 'green' : 'default'}>{s.is_active ? 'Active' : 'Ended'}</Badge></Td>
+                          </Tr>
+                        ))}
+                      </Table>
+                    )}
+                  </div>
+                )
+              })}
+            {groupedVisitorSessionsMap.size === 0 && <p className="text-sm text-center py-6" style={{ color: 'var(--text-secondary)' }}>No user sessions</p>}
+          </div>
         )}
 
-        {/* ── VISITORS (Smart Analytics Profile) ── */}
+        {/* ── VISITORS (Smart Analytics Profile with Expand) ── */}
         {tab === 'visitors' && (
           <div className="flex flex-col gap-4">
             {filteredVisitors.map((v) => {
@@ -547,77 +653,88 @@ export default function AdminDashboard() {
               const userNames = Array.from(new Set(visitorSessions.map((s) => s.username)))
               const userMemberRoomIds = Array.from(new Set(members.filter((m) => visitorSessions.some((s) => s.id === m.session_id)).map((m) => m.room_id)))
               const joinedRooms = rooms.filter((r) => userMemberRoomIds.includes(r.id))
+              const isExpanded = !!expandedVisitorProfiles[v.id]
 
               return (
                 <div key={v.id} className="p-4 rounded-xl flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <div className="flex items-center justify-between border-b pb-2 flex-wrap gap-2" style={{ borderColor: 'var(--border)' }}>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-mono px-2 py-1 rounded font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
+                      <span className="text-xs font-mono px-2.5 py-1 rounded font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
                         🧬 Device Fingerprint: {v.fingerprint ? `${v.fingerprint.slice(0, 16)}…` : 'Generating…'}
                       </span>
                       <span className="text-xs font-mono px-2 py-1 rounded" style={{ background: 'var(--surface-2)', color: 'var(--accent-light)' }}>
                         🌐 IP Hash: {v.ip_hash}
                       </span>
                     </div>
-                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>First: {formatDate(v.first_seen)} | Last: {formatDate(v.last_seen)}</span>
+
+                    <button
+                      onClick={() => setExpandedVisitorProfiles((prev) => ({ ...prev, [v.id]: !prev[v.id] }))}
+                      className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+                      style={{ background: 'var(--surface-2)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}
+                    >
+                      {isExpanded ? 'Hide Details 🔼' : 'Expand Smart Profile 🔽'}
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    {/* Device & Browser Specs */}
-                    <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
-                      <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>💻 Silent Hardware Fingerprint Specs:</span>
-                      {v.device_info ? (
-                        (() => {
-                          try {
-                            const info = JSON.parse(v.device_info)
-                            return (
-                              <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono" style={{ color: 'var(--text-secondary)' }}>
-                                <div>📱 Screen: <span className="text-white font-bold">{info.screen}</span></div>
-                                <div>🌍 Timezone: <span className="text-white font-bold">{info.timeZone}</span></div>
-                                <div>🗣️ Language: <span className="text-white font-bold">{info.language}</span></div>
-                                <div>⚡ CPU Cores: <span className="text-white font-bold">{info.cpuCores}</span></div>
-                                <div>💾 RAM (Est): <span className="text-white font-bold">{info.ramGB} GB</span></div>
-                                <div>🖥️ Platform: <span className="text-white font-bold">{info.platform}</span></div>
-                              </div>
-                            )
-                          } catch {
-                            return <span className="font-mono text-[11px] break-all">{v.device_info}</span>
-                          }
-                        })()
-                      ) : (
-                        <span className="font-mono text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>
-                          {v.user_agent ?? 'Unknown Device'}
+                  {/* Summary Bar */}
+                  <div className="flex items-center justify-between text-xs text-secondary flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Usernames:</span>
+                      {userNames.map((u) => (
+                        <span key={u} className="px-2 py-0.5 rounded text-[11px] font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
+                          {u}
                         </span>
-                      )}
+                      ))}
                     </div>
+                    <span>First Seen: {formatDate(v.first_seen)} | Last Active: {formatDate(v.last_seen)}</span>
+                  </div>
 
-                    {/* Smart Activity Tracking */}
-                    <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>🎭 Usernames Used ({userNames.length}):</span>
-                        <div className="flex flex-wrap gap-1">
-                          {userNames.map((u) => (
-                            <span key={u} className="px-2 py-0.5 rounded text-[11px] font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
-                              {u}
-                            </span>
-                          ))}
-                          {userNames.length === 0 && <span style={{ color: 'var(--text-secondary)' }}>None</span>}
-                        </div>
+                  {/* Collapsible Smart Profile Details */}
+                  {isExpanded && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs mt-2">
+                      {/* Device & Browser Specs */}
+                      <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
+                        <span className="font-semibold text-white">💻 Hardware Fingerprint Specs:</span>
+                        {v.device_info ? (
+                          (() => {
+                            try {
+                              const info = JSON.parse(v.device_info)
+                              return (
+                                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+                                  <div>📱 Screen: <span className="text-white font-bold">{info.screen}</span></div>
+                                  <div>🌍 Timezone: <span className="text-white font-bold">{info.timeZone}</span></div>
+                                  <div>🗣️ Language: <span className="text-white font-bold">{info.language}</span></div>
+                                  <div>⚡ CPU Cores: <span className="text-white font-bold">{info.cpuCores}</span></div>
+                                  <div>💾 RAM (Est): <span className="text-white font-bold">{info.ramGB} GB</span></div>
+                                  <div>🖥️ Platform: <span className="text-white font-bold">{info.platform}</span></div>
+                                  <div className="col-span-2 pt-1">🎮 GPU: <span className="text-purple-300 font-bold">{info.gpu}</span></div>
+                                </div>
+                              )
+                            } catch {
+                              return <span className="font-mono text-[11px] break-all">{v.device_info}</span>
+                            }
+                          })()
+                        ) : (
+                          <span className="font-mono text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>
+                            {v.user_agent ?? 'Unknown Device'}
+                          </span>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>🏠 Rooms Participated ({joinedRooms.length}):</span>
+                      {/* Smart Activity Tracking */}
+                      <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
+                        <span className="font-semibold text-white">🏠 Room Activity & History:</span>
                         <div className="flex flex-wrap gap-1">
                           {joinedRooms.map((r) => (
-                            <span key={r.id} className="px-2 py-0.5 rounded text-[11px]" style={{ background: 'var(--surface)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}>
-                              {r.name}
+                            <span key={r.id} className="px-2.5 py-1 rounded text-[11px]" style={{ background: 'var(--surface)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}>
+                              🏠 {r.name} ({r.status})
                             </span>
                           ))}
-                          {joinedRooms.length === 0 && <span style={{ color: 'var(--text-secondary)' }}>None</span>}
+                          {joinedRooms.length === 0 && <span style={{ color: 'var(--text-secondary)' }}>No rooms participated</span>}
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )
             })}
@@ -627,7 +744,7 @@ export default function AdminDashboard() {
 
         {/* ── MEDIA GALLERY ── */}
         {tab === 'media' && (
-          <Table headers={['Preview', 'Room', 'Type', 'OTV', 'Expires', 'Preserved', 'Save/Release', 'Delete']}>
+          <Table headers={['Preview', 'Room Log', 'Type', 'OTV', 'Expires', 'Preserved', 'Save/Release', 'Delete']}>
             {mediaMessages
               .filter((m) => !q || (m.content ?? '').toLowerCase().includes(q))
               .map((m) => {
@@ -649,14 +766,28 @@ export default function AdminDashboard() {
                             className="text-xs px-2.5 py-1 rounded-md font-medium"
                             style={{ background: 'var(--accent)', color: '#fff' }}
                           >
-                            View Large
+                            View Full
                           </button>
                         </div>
+                      ) : m.message_type === 'voice' && url ? (
+                        <audio controls src={url} className="h-8 max-w-[200px]" />
                       ) : (
-                        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{m.message_type === 'voice' ? '🎙 Voice' : '—'}</span>
+                        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>—</span>
                       )}
                     </Td>
-                    <Td mono>{room?.name ?? m.room_id.slice(0, 8) + '…'}</Td>
+                    <Td>
+                      {room ? (
+                        <button
+                          onClick={() => setRoomModal(room)}
+                          className="text-xs font-mono underline hover:text-purple-400"
+                          style={{ color: 'var(--accent-light)' }}
+                        >
+                          🏠 {room.name}
+                        </button>
+                      ) : (
+                        <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{m.room_id.slice(0, 8)}…</span>
+                      )}
+                    </Td>
                     <Td><Badge color="yellow">{m.message_type}</Badge></Td>
                     <Td>
                       {m.one_time_view
@@ -667,7 +798,7 @@ export default function AdminDashboard() {
                       {isDeleted
                         ? <span className="text-xs italic" style={{ color: 'var(--text-secondary)' }}>Deleted</span>
                         : m.admin_preserved
-                          ? <span className="text-xs" style={{ color: 'var(--success)' }}>Never</span>
+                          ? <span className="text-xs font-bold" style={{ color: 'var(--success)' }}>Never (Preserved)</span>
                           : hl !== null
                             ? <span className="text-xs" style={{ color: hl < 6 ? 'var(--danger)' : 'var(--text-secondary)' }}>
                                 {hl}h left
@@ -687,11 +818,11 @@ export default function AdminDashboard() {
                         <button
                           onClick={() => handlePreserve(m.id, !m.admin_preserved)}
                           disabled={preservingId === m.id}
-                          className="text-xs px-2 py-1 rounded-lg transition-opacity disabled:opacity-50"
+                          className="text-xs px-2 py-1 rounded-lg transition-opacity disabled:opacity-50 font-semibold"
                           style={
                             m.admin_preserved
-                              ? { color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.3)' }
-                              : { color: 'var(--success)', border: '1px solid rgba(16,185,129,0.3)' }
+                              ? { color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.1)' }
+                              : { color: 'var(--success)', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.1)' }
                           }
                         >
                           {preservingId === m.id ? '…' : m.admin_preserved ? 'Release' : 'Save'}
@@ -725,6 +856,7 @@ export default function AdminDashboard() {
         <RoomHistoryModal
           room={roomModal}
           messages={messages}
+          sessions={sessions}
           onClose={() => setRoomModal(null)}
         />
       )}

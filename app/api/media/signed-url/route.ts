@@ -8,9 +8,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // Validate session (table: sessions)
-    const { data: session } = await supabase.from('sessions').select('id').eq('id', sessionId).maybeSingle()
-    if (!session) return Response.json({ error: 'Invalid session' }, { status: 401 })
+    // Validate session unless it's admin
+    if (sessionId !== '__admin__') {
+      const { data: session } = await supabase.from('sessions').select('id').eq('id', sessionId).maybeSingle()
+      if (!session) return Response.json({ error: 'Invalid session' }, { status: 401 })
+    }
 
     const results: Record<string, string | null> = {}
     await Promise.all(paths.map(async (path: string) => {
