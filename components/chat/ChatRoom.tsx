@@ -127,13 +127,17 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
       }
     )
 
-    // Seen updates — update seen_at on the matching message
+    // Seen & Content updates — update seen_at, viewed_at, and content on the matching message
     ch.on('postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
       (payload) => {
         const upd = payload.new as MessageWithMeta
         setMessages((prev) =>
-          prev.map((m) => m.id === upd.id ? { ...m, seen_at: upd.seen_at, viewed_at: upd.viewed_at } : m)
+          prev.map((m) =>
+            m.id === upd.id
+              ? { ...m, seen_at: upd.seen_at, viewed_at: upd.viewed_at, content: upd.content }
+              : m
+          )
         )
       }
     )

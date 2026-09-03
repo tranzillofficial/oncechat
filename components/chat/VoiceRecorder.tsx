@@ -21,24 +21,44 @@ export default function VoiceRecorder({ onRecorded, disabled = false }: VoiceRec
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : MediaRecorder.isTypeSupported('audio/mp4')
-        ? 'audio/mp4'
-        : 'audio/ogg'
+      let recorder: MediaRecorder
+      let chosenMime = ''
 
-      mimeTypeRef.current = mimeType
-      const recorder = new MediaRecorder(stream, { mimeType })
+      const types = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/aac',
+        'audio/ogg',
+        'audio/wav',
+      ]
+
+      if (typeof MediaRecorder !== 'undefined') {
+        for (const t of types) {
+          if (MediaRecorder.isTypeSupported(t)) {
+            chosenMime = t
+            break
+          }
+        }
+      }
+
+      try {
+        recorder = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream)
+      } catch {
+        // Fallback without explicit mimeType
+        recorder = new MediaRecorder(stream)
+      }
+
+      const actualMime = recorder.mimeType || chosenMime || 'audio/mp4'
+      mimeTypeRef.current = actualMime
       chunksRef.current = []
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data)
       }
 
       recorder.onstop = () => {
-        const type = mimeTypeRef.current
+        const type = mimeTypeRef.current || 'audio/mp4'
         const blob = new Blob(chunksRef.current, { type })
         onRecorded(blob, type)
         if (streamRef.current) {
@@ -48,13 +68,15 @@ export default function VoiceRecorder({ onRecorded, disabled = false }: VoiceRec
         setSeconds(0)
       }
 
-      recorder.start(100)
+      recorder.start(250)
       mediaRecorderRef.current = recorder
       setIsRecording(true)
 
+      if (timerRef.current) clearInterval(timerRef.current)
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
-    } catch {
-      alert('Microphone access denied or not available.')
+    } catch (err) {
+      console.error('[VoiceRecorder error]', err)
+      alert('Microphone access denied or not supported on this browser.')
     }
   }, [onRecorded])
 

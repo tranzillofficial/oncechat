@@ -32,10 +32,13 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // Validate active room membership — is_active (boolean column)
+    // Validate room membership
     const { data: member } = await supabase.from('room_members')
-      .select('id').eq('session_id', sessionId).eq('room_id', roomId).eq('is_active', true).maybeSingle()
-    if (!member) return Response.json({ error: 'Not an active member of this room' }, { status: 403 })
+      .select('id').eq('session_id', sessionId).eq('room_id', roomId).maybeSingle()
+    if (!member) return Response.json({ error: 'Not a member of this room' }, { status: 403 })
+
+    // Ensure member is active
+    await supabase.from('room_members').update({ is_active: true }).eq('id', member.id)
 
     if (mediaType === 'image') {
       if (!ALLOWED_IMAGE.includes(file.type)) return Response.json({ error: 'Invalid image type' }, { status: 400 })

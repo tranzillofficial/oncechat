@@ -16,15 +16,9 @@ export async function POST(req: NextRequest) {
     await supabase.from('room_members')
       .update({ is_active: false, left_at: new Date().toISOString() }).eq('id', memberId)
 
-    // Update session last_seen (column: last_seen)
+    // Update session last_seen
     await supabase.from('sessions')
       .update({ last_seen: new Date().toISOString() }).eq('id', sessionId)
-
-    // Close room if no active members remain
-    const { count } = await supabase.from('room_members')
-      .select('id', { count: 'exact', head: true }).eq('room_id', roomId).eq('is_active', true)
-    if ((count ?? 0) === 0)
-      await supabase.from('rooms').update({ status: 'closed' }).eq('id', roomId)
 
     return Response.json({ success: true })
   } catch (err) {
