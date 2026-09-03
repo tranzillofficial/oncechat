@@ -27,6 +27,7 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
   const [typingUser,  setTypingUser]  = useState<string | null>(null)
   const [roomClosed,  setRoomClosed]  = useState(false)
   const [loading,     setLoading]     = useState(true)
+  const [isUploading, setIsUploading] = useState(false)
   const [error,       setError]       = useState<string | null>(null)
 
   const channelRef     = useRef<ReturnType<typeof supabase.channel> | null>(null)
@@ -201,40 +202,50 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
   }
 
   async function handleSendFile(file: File, oneTimeView: boolean) {
-    if (!sessionId || !roomId) return
-    const fd = new FormData()
-    fd.append('file', file); fd.append('sessionId', sessionId)
-    fd.append('roomId', roomId); fd.append('mediaType', 'image')
-    fd.append('oneTimeView', String(oneTimeView))
-    const res  = await fetch('/api/media/upload', { method: 'POST', body: fd })
-    const data = await res.json()
-    if (!res.ok) { alert(data.error || 'Upload failed'); return }
-    await sendMessage({
-      messageType: 'image',
-      content: null,
-      storagePath: data.storagePath,
-      expiresAt: data.expiresAt,
-      oneTimeView: data.oneTimeView ?? false,
-    })
+    if (!sessionId || !roomId || isUploading) return
+    setIsUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file); fd.append('sessionId', sessionId)
+      fd.append('roomId', roomId); fd.append('mediaType', 'image')
+      fd.append('oneTimeView', String(oneTimeView))
+      const res  = await fetch('/api/media/upload', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error || 'Upload failed'); return }
+      await sendMessage({
+        messageType: 'image',
+        content: null,
+        storagePath: data.storagePath,
+        expiresAt: data.expiresAt,
+        oneTimeView: data.oneTimeView ?? false,
+      })
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   async function handleSendVoice(blob: Blob, mimeType: string) {
-    if (!sessionId || !roomId) return
-    const ext  = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp3') ? 'mp3' : 'webm'
-    const file = new File([blob], `voice.${ext}`, { type: mimeType })
-    const fd   = new FormData()
-    fd.append('file', file); fd.append('sessionId', sessionId)
-    fd.append('roomId', roomId); fd.append('mediaType', 'voice')
-    const res  = await fetch('/api/media/upload', { method: 'POST', body: fd })
-    const data = await res.json()
-    if (!res.ok) { alert(data.error || 'Upload failed'); return }
-    await sendMessage({
-      messageType: 'voice',
-      content: null,
-      storagePath: data.storagePath,
-      expiresAt: data.expiresAt,
-      oneTimeView: false,
-    })
+    if (!sessionId || !roomId || isUploading) return
+    setIsUploading(true)
+    try {
+      const ext  = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp3') ? 'mp3' : 'webm'
+      const file = new File([blob], `voice.${ext}`, { type: mimeType })
+      const fd   = new FormData()
+      fd.append('file', file); fd.append('sessionId', sessionId)
+      fd.append('roomId', roomId); fd.append('mediaType', 'voice')
+      const res  = await fetch('/api/media/upload', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error || 'Upload failed'); return }
+      await sendMessage({
+        messageType: 'voice',
+        content: null,
+        storagePath: data.storagePath,
+        expiresAt: data.expiresAt,
+        oneTimeView: false,
+      })
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   async function handleLeave() {
@@ -300,7 +311,7 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
       <MessageInput
         onSendText={handleSendText} onSendFile={handleSendFile} onSendVoice={handleSendVoice}
         onTypingStart={() => broadcastTyping(true)} onTypingStop={() => broadcastTyping(false)}
-        disabled={roomClosed}
+        disabled={roomClosed || isUploading}
       />
     </div>
   )

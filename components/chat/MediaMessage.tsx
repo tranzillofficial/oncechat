@@ -260,6 +260,14 @@ export default function MediaMessage({
     }
   }, [storagePath, sessionId, loadState])
 
+  // Auto-fetch signed URL if image is not a recipient OTV image
+  useEffect(() => {
+    const isRecipientOtv = oneTimeView && !isOwn && !adminView
+    if (!isRecipientOtv && storagePath && loadState === 'idle') {
+      fetchSignedUrl()
+    }
+  }, [oneTimeView, isOwn, adminView, storagePath, loadState, fetchSignedUrl])
+
   async function handleOtvReveal() {
     if (!didMarkViewed.current && !isOwn) {
       didMarkViewed.current = true
