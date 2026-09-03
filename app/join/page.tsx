@@ -8,7 +8,6 @@ import { createClient } from '@/lib/supabase/client'
 
 export default function JoinRoomPage() {
   const router   = useRouter()
-  const supabase = createClient()
 
   const [roomName, setRoomName] = useState('')
   const [username, setUsername] = useState('')
@@ -27,6 +26,7 @@ export default function JoinRoomPage() {
 
     try {
       // Step 1: Check room exists (anon key, no service role needed)
+      const supabase = createClient()
       const { data: room, error: roomCheckErr } = await supabase
         .from('rooms').select('id, status').eq('name', trimmedRoom).maybeSingle()
 
