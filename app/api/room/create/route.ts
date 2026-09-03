@@ -21,8 +21,13 @@ export async function POST(req: NextRequest) {
     const { data: session } = await supabase.from('sessions').select('id').eq('id', sessionId).maybeSingle()
     if (!session) return Response.json({ error: 'Invalid session' }, { status: 401 })
 
-    const { data: existing } = await supabase.from('rooms').select('id').eq('name', trimmedRoom).maybeSingle()
-    if (existing) return Response.json({ error: 'Room name already taken' }, { status: 409 })
+    // Only check if an ACTIVE or WAITING room currently exists with this name
+    const { data: existing } = await supabase.from('rooms')
+      .select('id')
+      .eq('name', trimmedRoom)
+      .in('status', ['waiting', 'active'])
+      .maybeSingle()
+    if (existing) return Response.json({ error: 'An active room with this name already exists' }, { status: 409 })
 
     await supabase.from('sessions').update({ username: trimmedUser, last_seen: new Date().toISOString() }).eq('id', sessionId)
 

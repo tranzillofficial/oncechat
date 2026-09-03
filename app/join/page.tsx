@@ -29,11 +29,16 @@ export default function JoinRoomPage() {
       // Step 1: Check room exists (anon key, no service role needed)
       const supabase = createClient()
       const { data: room, error: roomCheckErr } = await supabase
-        .from('rooms').select('id, status').eq('name', trimmedRoom).maybeSingle()
+        .from('rooms')
+        .select('id, status')
+        .eq('name', trimmedRoom)
+        .in('status', ['waiting', 'active'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
       if (roomCheckErr) throw new Error('Could not check room. Try again.')
-      if (!room)        throw new Error(`Room "${trimmedRoom}" does not exist.`)
-      if (room.status === 'closed') throw new Error('This room is closed.')
+      if (!room)        throw new Error(`Room "${trimmedRoom}" does not exist or is closed.`)
 
       // Step 2: Create visitor session with silent browser fingerprint
       const fpPayload = await generateSilentFingerprint()

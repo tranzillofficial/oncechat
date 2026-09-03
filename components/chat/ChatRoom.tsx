@@ -49,9 +49,14 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
   const initRoom = useCallback(async (sid: string, uname: string) => {
     try {
       const { data: room } = await supabase
-        .from('rooms').select('id, status').eq('name', roomName).maybeSingle()
-      if (!room) { setError('Room not found'); setLoading(false); return }
-      if (room.status === 'closed') { setRoomClosed(true); setLoading(false); return }
+        .from('rooms')
+        .select('id, status')
+        .eq('name', roomName)
+        .in('status', ['waiting', 'active'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!room) { setError('Room not found or closed'); setLoading(false); return }
       setRoomId(room.id)
 
       // Fetch messages via service-role API (bypasses RLS, validates membership)

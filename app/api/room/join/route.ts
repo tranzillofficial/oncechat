@@ -17,9 +17,15 @@ export async function POST(req: NextRequest) {
     const { data: session } = await supabase.from('sessions').select('id').eq('id', sessionId).maybeSingle()
     if (!session) return Response.json({ error: 'Invalid session' }, { status: 401 })
 
-    const { data: room } = await supabase.from('rooms').select('id, status').eq('name', roomName.trim()).maybeSingle()
-    if (!room)                    return Response.json({ error: `Room "${roomName}" does not exist` }, { status: 404 })
-    if (room.status === 'closed') return Response.json({ error: 'This room is closed' }, { status: 403 })
+    const { data: room } = await supabase.from('rooms')
+      .select('id, status')
+      .eq('name', roomName.trim())
+      .in('status', ['waiting', 'active'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!room) return Response.json({ error: `Room "${roomName}" does not exist or is closed` }, { status: 404 })
 
     // Fetch active members
     const { data: activeMembers } = await supabase
