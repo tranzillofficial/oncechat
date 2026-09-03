@@ -18,18 +18,58 @@ interface MediaMessageProps {
 const OTV_SECONDS = 30
 
 // ─── Screenshot protection hook ───────────────────────────────────────────
-// Fires whenever the page becomes hidden (screenshot tools, screen recorders,
-// and iOS/Android screenshot gestures all briefly hide the page first).
+// Listens for PrintScreen, Windows Snipping Tool (Win+Shift+S), Cmd+Shift+3/4,
+// window blur/focus loss, and visibilitychange events.
 function useScreenshotProtection(active: boolean) {
   const [blurred, setBlurred] = useState(false)
 
   useEffect(() => {
     if (!active) return
-    function onVisibilityChange() {
-      if (document.visibilityState === 'hidden') setBlurred(true)
+
+    function triggerBlur() {
+      setBlurred(true)
     }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'hidden') triggerBlur()
+    }
+
+    function onWindowBlur() {
+      triggerBlur()
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      // PrintScreen key
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
+        triggerBlur()
+      }
+      // Windows Snipping Tool: Win + Shift + S
+      if (e.shiftKey && (e.key === 'S' || e.key === 's') && (e.metaKey || e.ctrlKey)) {
+        triggerBlur()
+      }
+      // Mac Screenshot: Cmd + Shift + 3/4/5
+      if (e.metaKey && e.shiftKey && ['3', '4', '5'].includes(e.key)) {
+        triggerBlur()
+      }
+    }
+
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
+        triggerBlur()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onWindowBlur)
     document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onWindowBlur)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [active])
 
   // Auto-clear blur after 3 s so UX isn't permanently broken
