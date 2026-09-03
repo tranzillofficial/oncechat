@@ -17,24 +17,60 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Server misconfiguration' }, { status: 503 })
 
   try {
+    const body = await req.json().catch(() => ({}))
+    const fingerprint = body.fingerprint as string | undefined
+    const deviceInfo = body.deviceInfo as string | undefined
+
     const supabase  = createAdminClient()
     const ipHash    = await hashIp(getIp(req))
     const userAgent = req.headers.get('user-agent') || null
     const now       = new Date().toISOString()
 
-    // Find or create visitor (table: visitors)
-    const { data: existing } = await supabase
-      .from('visitors').select('id').eq('ip_hash', ipHash).maybeSingle()
+    // Smart identification: Match visitor by persistent Browser Fingerprint FIRST, then by IP Hash
+    let existingVisitor = null
+
+    if (fingerprint) {
+      const { data: byFp } = await supabase
+        .from('visitors')
+        .select('id, fingerprint, device_info')
+        .eq('fingerprint', fingerprint)
+        .maybeSingle()
+      existingVisitor = byFp
+    }
+
+    if (!existingVisitor) {
+      const { data: byIp } = await supabase
+        .from('visitors')
+        .select('id, fingerprint, device_info')
+        .eq('ip_hash', ipHash)
+        .maybeSingle()
+      existingVisitor = byIp
+    }
 
     let visitorId: string
-    if (existing) {
-      await supabase.from('visitors').update({ last_seen: now, user_agent: userAgent }).eq('id', existing.id)
-      visitorId = existing.id
+    if (existingVisitor) {
+      // Update last seen, user agent, and save fingerprint/device_info if newly obtained
+      await supabase.from('visitors').update({
+        last_seen: now,
+        user_agent: userAgent,
+        fingerprint: fingerprint || existingVisitor.fingerprint,
+        device_info: deviceInfo || existingVisitor.device_info,
+      }).eq('id', existingVisitor.id)
+      visitorId = existingVisitor.id
     } else {
       const { data: nv, error: insertErr } = await supabase
-        .from('visitors').insert({ ip_hash: ipHash, user_agent: userAgent }).select('id').single()
+        .from('visitors')
+        .insert({
+          ip_hash: ipHash,
+          user_agent: userAgent,
+          fingerprint: fingerprint || null,
+          device_info: deviceInfo || null,
+        })
+        .select('id')
+        .single()
+
       if (insertErr || !nv) {
-        // race — try fetch again
+        // Fallback query if race condition occurred
         const { data: rv } = await supabase.from('visitors').select('id').eq('ip_hash', ipHash).maybeSingle()
         if (!rv) {
           console.error('[visitor]', insertErr?.message)
@@ -46,12 +82,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Create session (table: sessions, columns: visitor_id, username, is_active)
+    // Create session (table: sessions)
     const { data: session, error: sErr } = await supabase
       .from('sessions')
       .insert({ visitor_id: visitorId, username: 'anonymous', is_active: true })
       .select('id')
       .single()
+
     if (sErr || !session) {
       console.error('[session]', sErr?.message)
       return Response.json({ error: 'Failed to create session' }, { status: 500 })

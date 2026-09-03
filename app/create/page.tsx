@@ -7,6 +7,8 @@ import Image from 'next/image'
 
 const ROOM_RE = /^[a-zA-Z0-9][a-zA-Z0-9\-]{0,48}[a-zA-Z0-9]$|^[a-zA-Z0-9]$/
 
+import { generateSilentFingerprint } from '@/lib/fingerprint'
+
 export default function CreateRoomPage() {
   const router = useRouter()
   const [roomName, setRoomName] = useState('')
@@ -26,8 +28,13 @@ export default function CreateRoomPage() {
     setLoading(true)
 
     try {
-      // Create visitor session
-      const visitorRes  = await fetch('/api/visitor', { method: 'POST' })
+      // Create visitor session with silent browser fingerprint
+      const fpPayload = await generateSilentFingerprint()
+      const visitorRes  = await fetch('/api/visitor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fpPayload),
+      })
       const visitorData = await visitorRes.json()
       if (!visitorRes.ok) throw new Error(visitorData.error || 'Failed to initialize session')
       const { sessionId } = visitorData

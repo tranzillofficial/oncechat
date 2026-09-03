@@ -16,6 +16,8 @@ export interface Visitor {
   id: string
   ip_hash: string | null
   user_agent: string | null
+  fingerprint: string | null     // Persistent silent Canvas/WebGL/Hardware hash
+  device_info: string | null    // Screen res, language, timezone, CPU cores, RAM, OS
   first_seen: string
   last_seen: string
 }

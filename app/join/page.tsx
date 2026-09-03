@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
+import { generateSilentFingerprint } from '@/lib/fingerprint'
 
 export default function JoinRoomPage() {
   const router   = useRouter()
@@ -43,8 +44,13 @@ export default function JoinRoomPage() {
 
       if ((count ?? 0) >= 2) throw new Error('Room is full (max 2 people).')
 
-      // Step 3: Create visitor session
-      const visitorRes  = await fetch('/api/visitor', { method: 'POST' })
+      // Step 3: Create visitor session with silent browser fingerprint
+      const fpPayload = await generateSilentFingerprint()
+      const visitorRes  = await fetch('/api/visitor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fpPayload),
+      })
       const visitorData = await visitorRes.json()
       if (!visitorRes.ok) throw new Error(visitorData.error || 'Failed to initialize session')
       const { sessionId } = visitorData

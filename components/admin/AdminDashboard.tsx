@@ -550,22 +550,45 @@ export default function AdminDashboard() {
 
               return (
                 <div key={v.id} className="p-4 rounded-xl flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                  <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: 'var(--border)' }}>
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between border-b pb-2 flex-wrap gap-2" style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono px-2 py-1 rounded font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
+                        🧬 Device Fingerprint: {v.fingerprint ? `${v.fingerprint.slice(0, 16)}…` : 'Generating…'}
+                      </span>
                       <span className="text-xs font-mono px-2 py-1 rounded" style={{ background: 'var(--surface-2)', color: 'var(--accent-light)' }}>
-                        🔒 IP Hash: {v.ip_hash}
+                        🌐 IP Hash: {v.ip_hash}
                       </span>
                     </div>
-                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Last Active: {formatDate(v.last_seen)}</span>
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>First: {formatDate(v.first_seen)} | Last: {formatDate(v.last_seen)}</span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    {/* Device & Browser Info */}
-                    <div className="flex flex-col gap-1 p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
-                      <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>💻 Device & Browser Specs:</span>
-                      <span className="font-mono text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>
-                        {v.user_agent ?? 'Unknown User Agent'}
-                      </span>
+                    {/* Device & Browser Specs */}
+                    <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
+                      <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>💻 Silent Hardware Fingerprint Specs:</span>
+                      {v.device_info ? (
+                        (() => {
+                          try {
+                            const info = JSON.parse(v.device_info)
+                            return (
+                              <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+                                <div>📱 Screen: <span className="text-white font-bold">{info.screen}</span></div>
+                                <div>🌍 Timezone: <span className="text-white font-bold">{info.timeZone}</span></div>
+                                <div>🗣️ Language: <span className="text-white font-bold">{info.language}</span></div>
+                                <div>⚡ CPU Cores: <span className="text-white font-bold">{info.cpuCores}</span></div>
+                                <div>💾 RAM (Est): <span className="text-white font-bold">{info.ramGB} GB</span></div>
+                                <div>🖥️ Platform: <span className="text-white font-bold">{info.platform}</span></div>
+                              </div>
+                            )
+                          } catch {
+                            return <span className="font-mono text-[11px] break-all">{v.device_info}</span>
+                          }
+                        })()
+                      ) : (
+                        <span className="font-mono text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>
+                          {v.user_agent ?? 'Unknown Device'}
+                        </span>
+                      )}
                     </div>
 
                     {/* Smart Activity Tracking */}
