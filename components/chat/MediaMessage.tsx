@@ -18,8 +18,7 @@ interface MediaMessageProps {
 const OTV_SECONDS = 30
 
 // ─── Screenshot protection hook ───────────────────────────────────────────
-// Listens for PrintScreen, Windows Snipping Tool (Win+Shift+S), Cmd+Shift+3/4,
-// window blur/focus loss, and visibilitychange events.
+// Listens for PrintScreen, Windows Snipping Tool (Win+Shift+S), and Cmd+Shift+3/4.
 function useScreenshotProtection(active: boolean) {
   const [blurred, setBlurred] = useState(false)
 
@@ -28,14 +27,6 @@ function useScreenshotProtection(active: boolean) {
 
     function triggerBlur() {
       setBlurred(true)
-    }
-
-    function onVisibilityChange() {
-      if (document.visibilityState === 'hidden') triggerBlur()
-    }
-
-    function onWindowBlur() {
-      triggerBlur()
     }
 
     function onKeyDown(e: KeyboardEvent) {
@@ -61,18 +52,14 @@ function useScreenshotProtection(active: boolean) {
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
-    window.addEventListener('blur', onWindowBlur)
-    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
-      window.removeEventListener('blur', onWindowBlur)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [active])
 
-  // Auto-clear blur after 3 s so UX isn't permanently broken
+  // Auto-clear blur after 3 s
   useEffect(() => {
     if (!blurred) return
     const t = setTimeout(() => setBlurred(false), 3000)
@@ -143,7 +130,7 @@ function Lightbox({
           alt="Full size"
           className="rounded-xl object-contain max-w-[92vw] max-h-[88vh]"
           style={{
-            filter: blurred ? 'blur(24px) brightness(0.4)' : 'none',
+            filter: blurred ? 'blur(30px) brightness(0.2)' : 'none',
             transition: 'filter 0.15s',
             // Prevent right-click save / long-press save on iOS
             WebkitTouchCallout: 'none',
@@ -152,18 +139,6 @@ function Lightbox({
           draggable={false}
           onContextMenu={(e) => e.preventDefault()}
         />
-
-        {/* Blur overlay message */}
-        {blurred && (
-          <div
-            className="absolute inset-0 flex items-center justify-center rounded-xl"
-            style={{ background: 'rgba(0,0,0,0.5)' }}
-          >
-            <p className="text-white text-sm font-medium px-4 text-center">
-              🔒 Privacy protected
-            </p>
-          </div>
-        )}
       </div>
     </div>
   )
@@ -204,19 +179,13 @@ function ProtectedImage({
         unoptimized
         draggable={false}
         style={{
-          filter: blurred ? 'blur(16px) brightness(0.3)' : 'none',
+          filter: blurred ? 'blur(20px) brightness(0.25)' : 'none',
           transition: 'filter 0.15s',
           pointerEvents: 'none',
           WebkitTouchCallout: 'none' as 'none',
         }}
         onContextMenu={(e) => e.preventDefault()}
       />
-      {blurred && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-xl"
-          style={{ background: 'rgba(0,0,0,0.4)' }}>
-          <p className="text-white text-xs font-medium">🔒 Privacy protected</p>
-        </div>
-      )}
     </div>
   )
 }

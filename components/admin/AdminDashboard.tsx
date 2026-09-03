@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Room, Session, RoomMember, Visitor, Message } from '@/lib/supabase/types'
 import MessageList from '@/components/chat/MessageList'
 
-type Tab = 'rooms' | 'sessions' | 'visitors' | 'messages' | 'media'
+type Tab = 'rooms' | 'messages' | 'sessions' | 'visitors' | 'media'
 
 function formatDate(d: string | null) {
   if (!d) return '—'
@@ -120,6 +120,34 @@ function RoomHistoryModal({
   )
 }
 
+// ─── Admin Image Lightbox Modal ────────────────────────────────────────────
+function AdminImageModal({
+  url,
+  onClose,
+}: {
+  url: string
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.85)' }}
+      onClick={onClose}
+    >
+      <div className="relative max-w-4xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-0 text-white bg-white/20 px-3 py-1 rounded-lg text-sm font-semibold"
+        >
+          Close ✕
+        </button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt="Admin preview" className="max-w-full max-h-[85vh] rounded-xl object-contain" />
+      </div>
+    </div>
+  )
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
   const supabase = createClient()
@@ -137,6 +165,8 @@ export default function AdminDashboard() {
   const [cleaningUp,   setCleaningUp]   = useState(false)
   const [roomModal, setRoomModal] = useState<Room | null>(null)
   const [authToken, setAuthToken] = useState<string | null>(null)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [signedUrlsMap, setSignedUrlsMap] = useState<Record<string, string>>({})
 
   // Grab the session token for preserve-media requests
   useEffect(() => {
@@ -149,20 +179,38 @@ export default function AdminDashboard() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [roomsRes, sessionsRes, visitorsRes, membersRes, messagesRes] = await Promise.all([
-        supabase.from('rooms').select('*').order('created_at', { ascending: false }).limit(100),
-        // Table: sessions, ordered by started_at
-        supabase.from('sessions').select('*').order('started_at', { ascending: false }).limit(200),
-        // Table: visitors
-        supabase.from('visitors').select('*').order('first_seen', { ascending: false }).limit(100),
-        supabase.from('room_members').select('*').order('joined_at', { ascending: false }).limit(200),
-        supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(500),
+      const [rRes, sRes, mRes, vRes, msgRes] = await Promise.all([
+        supabase.from('rooms').select('*').order('created_at', { ascending: false }),
+        supabase.from('sessions').select('*').order('started_at', { ascending: false }),
+        supabase.from('room_members').select('*').order('joined_at', { ascending: false }),
+        supabase.from('visitors').select('*').order('last_seen', { ascending: false }),
+        supabase.from('messages').select('*').order('created_at', { ascending: false }),
       ])
-      if (roomsRes.data)    setRooms(roomsRes.data)
-      if (sessionsRes.data) setSessions(sessionsRes.data)
-      if (visitorsRes.data) setVisitors(visitorsRes.data)
-      if (membersRes.data)  setMembers(membersRes.data)
-      if (messagesRes.data) setMessages(messagesRes.data)
+
+      setRooms(rRes.data     ?? [])
+      setSessions(sRes.data  ?? [])
+      setMembers(mRes.data   ?? [])
+      setVisitors(vRes.data  ?? [])
+      setMessages(msgRes.data ?? [])
+
+      // Fetch signed URLs for media messages
+      const mediaPaths = (msgRes.data ?? [])
+        .filter((m) => m.storage_path && m.message_type === 'image')
+        .map((m) => m.storage_path!)
+
+      if (mediaPaths.length) {
+        const urlRes = await fetch('/api/media/signed-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paths: mediaPaths, sessionId: '__admin__' }),
+        })
+        if (urlRes.ok) {
+          const urlData = await urlRes.json()
+          setSignedUrlsMap(urlData.urls ?? {})
+        }
+      }
+    } catch (e) {
+      console.error('[AdminDashboard loadData]', e)
     } finally {
       setLoading(false)
     }
@@ -174,43 +222,61 @@ export default function AdminDashboard() {
     if (!authToken) return
     setPreservingId(messageId)
     try {
-      await fetch('/api/admin/preserve-media', {
+      const res = await fetch('/api/admin/preserve-media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
         body: JSON.stringify({ messageId, preserve }),
       })
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? { ...m, admin_preserved: preserve, expires_at: preserve ? null : m.expires_at }
-            : m
+      if (res.ok) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, admin_preserved: preserve } : m))
         )
-      )
+      }
     } finally {
       setPreservingId(null)
     }
   }
 
   async function handleDeleteMedia(messageId: string) {
-    if (!authToken) return
-    if (!confirm('Delete this media permanently? This cannot be undone.')) return
+    if (!authToken || !confirm('Permanently delete this media from storage?')) return
     setDeletingId(messageId)
     try {
       const res = await fetch('/api/admin/delete-media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
         body: JSON.stringify({ messageId }),
       })
       if (res.ok) {
-        // Remove from local list — storage is gone, no point keeping the row visible
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId ? { ...m, storage_path: null, expires_at: null } : m
-          )
+          prev.map((m) => (m.id === messageId ? { ...m, storage_path: null } : m))
         )
       }
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  async function handleRunCleanup() {
+    if (!authToken || cleaningUp) return
+    setCleaningUp(true)
+    try {
+      const res = await fetch('/api/admin/run-cleanup', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        alert(`Cleanup finished. Purged ${data.purgedCount ?? 0} expired media files.`)
+        await loadData()
+      }
+    } finally {
+      setCleaningUp(false)
     }
   }
 
@@ -219,47 +285,48 @@ export default function AdminDashboard() {
     router.push('/admin')
   }
 
-  async function handleRunCleanup() {
-    if (!authToken) return
-    setCleaningUp(true)
-    try {
-      const res  = await fetch('/api/admin/run-cleanup', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-      const data = await res.json()
-      if (res.ok) {
-        alert(`Cleanup done — ${data.deleted ?? 0} expired media file(s) deleted.`)
-        loadData()
-      } else {
-        alert(data.error || 'Cleanup failed')
-      }
-    } finally {
-      setCleaningUp(false)
-    }
-  }
-
-  // ── Filtered lists ──────────────────────────────────────────────────────
-  const q = search.toLowerCase()
-  const filteredRooms    = rooms.filter((r) => !q || r.name.toLowerCase().includes(q))
-  const filteredSessions = sessions.filter((s) => !q || s.username.toLowerCase().includes(q) || s.id.includes(q))
-  const filteredVisitors = visitors.filter((v) => !q || (v.ip_hash ?? '').toLowerCase().includes(q))
-  const filteredMessages = messages.filter(
-    (m) => !q || (m.content ?? '').toLowerCase().includes(q)
+  // Filter lists based on search
+  const q = search.toLowerCase().trim()
+  const filteredRooms = rooms.filter(
+    (r) => !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)
   )
-  const mediaMessages = messages.filter((m) => m.message_type !== 'text')
+  const filteredSessions = sessions.filter(
+    (s) => !q || s.username.toLowerCase().includes(q) || s.id.toLowerCase().includes(q) || s.visitor_id.toLowerCase().includes(q)
+  )
+  const filteredVisitors = visitors.filter(
+    (v) => !q || (v.ip_hash ?? '').toLowerCase().includes(q) || (v.user_agent ?? '').toLowerCase().includes(q)
+  )
+  const filteredMessages = messages.filter((m) => {
+    if (!q) return true
+    const room = rooms.find((r) => r.id === m.room_id)
+    return (
+      (m.content ?? '').toLowerCase().includes(q) ||
+      (room?.name ?? '').toLowerCase().includes(q) ||
+      (m.storage_path ?? '').toLowerCase().includes(q)
+    )
+  })
+
+  const mediaMessages = messages.filter((m) => m.message_type === 'image' || m.message_type === 'voice')
 
   const TABS: { id: Tab; label: string; count: number }[] = [
     { id: 'rooms',    label: 'Rooms',    count: rooms.length },
-    { id: 'sessions', label: 'Sessions', count: sessions.length },
-    { id: 'visitors', label: 'Visitors', count: visitors.length },
-    { id: 'messages', label: 'Messages', count: messages.length },
-    { id: 'media',    label: 'Media',    count: mediaMessages.length },
+    { id: 'messages', label: 'Rooms & Messages', count: rooms.length },
+    { id: 'sessions', label: 'User Sessions', count: sessions.length },
+    { id: 'visitors', label: 'Visitors (Smart Profile)', count: visitors.length },
+    { id: 'media',    label: 'Media Gallery', count: mediaMessages.length },
   ]
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <p className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading dashboard…</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-full flex flex-col" style={{ background: 'var(--background)' }}>
-      {/* Top bar */}
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--background)' }}>
+      {/* Header */}
       <header
         className="flex items-center justify-between px-6 py-4 flex-shrink-0"
         style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}
@@ -270,32 +337,31 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-3">
           <button
             onClick={loadData}
-            disabled={loading}
-            className="text-sm px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
-            style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+            style={{ background: 'var(--surface-2)', color: 'var(--text-secondary)' }}
           >
-            {loading ? 'Loading…' : 'Refresh'}
+            Refresh
           </button>
           <button
             onClick={handleRunCleanup}
             disabled={cleaningUp}
-            className="text-sm px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
-            style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-            title="Delete all expired media from storage"
+            className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+            style={{ background: 'var(--surface-2)', color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.3)' }}
           >
-            {cleaningUp ? 'Cleaning…' : 'Run Cleanup'}
+            {cleaningUp ? 'Running…' : 'Run Cleanup'}
           </button>
           <button
             onClick={handleLogout}
-            className="text-sm px-3 py-1.5 rounded-lg"
-            style={{ color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.3)' }}
+            className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+            style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}
           >
             Logout
           </button>
         </div>
       </header>
 
-      <div className="flex-1 px-6 py-6 flex flex-col gap-6">
+      {/* Main Content */}
+      <div className="flex-1 p-6 max-w-7xl w-full mx-auto flex flex-col gap-6">
         {/* Search */}
         <input
           type="search"
@@ -341,7 +407,6 @@ export default function AdminDashboard() {
         {tab === 'rooms' && (
           <Table headers={['Name', 'Status', 'Active Members', 'Created', 'Updated', 'History']}>
             {filteredRooms.map((r) => {
-              // is_active (boolean) — not status text
               const active = members.filter((m) => m.room_id === r.id && m.is_active).length
               return (
                 <Tr key={r.id}>
@@ -357,10 +422,10 @@ export default function AdminDashboard() {
                   <Td>
                     <button
                       onClick={() => setRoomModal(r)}
-                      className="text-xs px-2 py-1 rounded-lg"
+                      className="text-xs px-2 py-1 rounded-lg font-medium"
                       style={{ color: 'var(--accent-light)', border: '1px solid rgba(124,58,237,0.3)' }}
                     >
-                      View
+                      View Chat ({messages.filter(m => m.room_id === r.id).length})
                     </button>
                   </Td>
                 </Tr>
@@ -370,84 +435,204 @@ export default function AdminDashboard() {
           </Table>
         )}
 
+        {/* ── ROOMS & MESSAGES (Grouped by Room) ── */}
+        {tab === 'messages' && (
+          <div className="flex flex-col gap-6">
+            {filteredRooms.map((r) => {
+              const roomMsgs = messages.filter((m) => m.room_id === r.id)
+              const roomMembers = members.filter((m) => m.room_id === r.id)
+              return (
+                <div key={r.id} className="p-4 rounded-xl flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-base" style={{ color: 'var(--accent-light)' }}>🏠 Room: {r.name}</span>
+                      <Badge color={r.status === 'active' ? 'green' : r.status === 'closed' ? 'red' : 'yellow'}>
+                        {r.status}
+                      </Badge>
+                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Created: {formatDate(r.created_at)}</span>
+                    </div>
+                    <button
+                      onClick={() => setRoomModal(r)}
+                      className="text-xs px-3 py-1 rounded-lg font-medium"
+                      style={{ background: 'var(--surface-2)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}
+                    >
+                      Open Live Chat Log
+                    </button>
+                  </div>
+
+                  {/* Room Members & IPs */}
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Members in room:</span>
+                    {roomMembers.map((rm) => {
+                      const sess = sessions.find((s) => s.id === rm.session_id)
+                      const vis = visitors.find((v) => v.id === sess?.visitor_id)
+                      return (
+                        <span key={rm.id} className="px-2 py-0.5 rounded-md" style={{ background: 'var(--surface-2)', color: 'var(--text-primary)' }}>
+                          👤 {rm.username} <span className="font-mono text-[10px] opacity-75">(IP Hash: {vis?.ip_hash?.slice(0, 10) ?? 'unknown'}…)</span>
+                        </span>
+                      )
+                    })}
+                    {roomMembers.length === 0 && <span style={{ color: 'var(--text-secondary)' }}>No members joined yet</span>}
+                  </div>
+
+                  {/* Room Messages List */}
+                  <Table headers={['Sender Session', 'Type', 'Content / Media', 'Seen', 'Sent At']}>
+                    {roomMsgs.map((m) => {
+                      const sess = sessions.find((s) => s.id === m.sender_session_id)
+                      const url = m.storage_path ? signedUrlsMap[m.storage_path] : null
+                      return (
+                        <Tr key={m.id}>
+                          <Td><span className="font-medium text-xs">{sess?.username ?? 'Unknown'}</span> <span className="text-[10px] font-mono opacity-60">({m.sender_session_id.slice(0, 6)}…)</span></Td>
+                          <Td><Badge color={m.message_type === 'text' ? 'default' : 'yellow'}>{m.message_type}</Badge></Td>
+                          <Td>
+                            {m.message_type === 'text' ? (
+                              <span className="text-xs" style={{ color: 'var(--text-primary)' }}>{m.content}</span>
+                            ) : m.message_type === 'image' && url ? (
+                              <div className="flex items-center gap-2">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={url} alt="Thumb" className="w-10 h-10 rounded-md object-cover border border-purple-500/30" />
+                                <button
+                                  onClick={() => setPreviewImage(url)}
+                                  className="text-xs px-2 py-1 rounded-md"
+                                  style={{ background: 'var(--surface-2)', color: 'var(--accent-light)' }}
+                                >
+                                  View Full
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>📎 {m.storage_path ?? 'Media'}</span>
+                            )}
+                          </Td>
+                          <Td><Badge color={m.seen_at ? 'green' : 'default'}>{m.seen_at ? 'Yes' : 'No'}</Badge></Td>
+                          <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(m.created_at)}</span></Td>
+                        </Tr>
+                      )
+                    })}
+                    {roomMsgs.length === 0 && <Tr><Td><span style={{ color: 'var(--text-secondary)' }}>No messages in this room</span></Td></Tr>}
+                  </Table>
+                </div>
+              )
+            })}
+            {filteredRooms.length === 0 && <p className="text-sm text-center py-6" style={{ color: 'var(--text-secondary)' }}>No rooms found</p>}
+          </div>
+        )}
+
         {/* ── SESSIONS ── */}
         {tab === 'sessions' && (
-          <Table headers={['Username', 'Session ID', 'Visitor ID', 'Started', 'Last Seen', 'Active']}>
-            {filteredSessions.map((s) => (
-              <Tr key={s.id}>
-                <Td><span className="font-medium">{s.username}</span></Td>
-                <Td mono>{s.id.slice(0, 8)}…</Td>
-                <Td mono>{s.visitor_id.slice(0, 8)}…</Td>
-                {/* started_at — correct column name */}
-                <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(s.started_at)}</span></Td>
-                {/* last_seen — correct column name */}
-                <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(s.last_seen)}</span></Td>
-                <Td>
-                  <Badge color={s.is_active ? 'green' : 'default'}>{s.is_active ? 'Yes' : 'No'}</Badge>
-                </Td>
-              </Tr>
-            ))}
+          <Table headers={['Username', 'Session ID', 'Visitor IP Hash', 'Started', 'Last Seen', 'Active']}>
+            {filteredSessions.map((s) => {
+              const vis = visitors.find((v) => v.id === s.visitor_id)
+              return (
+                <Tr key={s.id}>
+                  <Td><span className="font-medium text-sm" style={{ color: 'var(--accent-light)' }}>👤 {s.username}</span></Td>
+                  <Td mono>{s.id.slice(0, 12)}…</Td>
+                  <Td mono>{vis?.ip_hash ? `${vis.ip_hash.slice(0, 12)}…` : '—'}</Td>
+                  <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(s.started_at)}</span></Td>
+                  <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(s.last_seen)}</span></Td>
+                  <Td>
+                    <Badge color={s.is_active ? 'green' : 'default'}>{s.is_active ? 'Active' : 'Ended'}</Badge>
+                  </Td>
+                </Tr>
+              )
+            })}
             {filteredSessions.length === 0 && <Tr><Td><span style={{ color: 'var(--text-secondary)' }}>No sessions</span></Td></Tr>}
           </Table>
         )}
 
-        {/* ── VISITORS ── */}
+        {/* ── VISITORS (Smart Analytics Profile) ── */}
         {tab === 'visitors' && (
-          <Table headers={['IP Hash', 'User Agent', 'First Seen', 'Last Seen']}>
-            {filteredVisitors.map((v) => (
-              <Tr key={v.id}>
-                <Td mono>{v.ip_hash}</Td>
-                <Td>
-                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }} title={v.user_agent ?? ''}>
-                    {v.user_agent ? v.user_agent.slice(0, 60) + (v.user_agent.length > 60 ? '…' : '') : '—'}
-                  </span>
-                </Td>
-                <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(v.first_seen)}</span></Td>
-                <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(v.last_seen)}</span></Td>
-              </Tr>
-            ))}
-            {filteredVisitors.length === 0 && <Tr><Td><span style={{ color: 'var(--text-secondary)' }}>No visitors</span></Td></Tr>}
-          </Table>
-        )}
+          <div className="flex flex-col gap-4">
+            {filteredVisitors.map((v) => {
+              const visitorSessions = sessions.filter((s) => s.visitor_id === v.id)
+              const userNames = Array.from(new Set(visitorSessions.map((s) => s.username)))
+              const userMemberRoomIds = Array.from(new Set(members.filter((m) => visitorSessions.some((s) => s.id === m.session_id)).map((m) => m.room_id)))
+              const joinedRooms = rooms.filter((r) => userMemberRoomIds.includes(r.id))
 
-        {/* ── MESSAGES ── */}
-        {tab === 'messages' && (
-          <Table headers={['Room', 'Type', 'Content', 'Seen', 'Sent At']}>
-            {filteredMessages.map((m) => {
-              const room = rooms.find((r) => r.id === m.room_id)
-              // seen_at — non-null means seen
-              const seen = !!m.seen_at
               return (
-                <Tr key={m.id}>
-                  <Td mono>{room?.name ?? m.room_id.slice(0, 8) + '…'}</Td>
-                  <Td><Badge color={m.message_type === 'text' ? 'default' : 'yellow'}>{m.message_type}</Badge></Td>
-                  <Td>
-                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {m.message_type === 'text'
-                        ? (m.content ?? '').slice(0, 80) + ((m.content?.length ?? 0) > 80 ? '…' : '')
-                        : m.storage_path ? '📎 ' + m.storage_path.split('/').pop() : '—'}
-                    </span>
-                  </Td>
-                  <Td><Badge color={seen ? 'green' : 'default'}>{seen ? 'Yes' : 'No'}</Badge></Td>
-                  <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(m.created_at)}</span></Td>
-                </Tr>
+                <div key={v.id} className="p-4 rounded-xl flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono px-2 py-1 rounded" style={{ background: 'var(--surface-2)', color: 'var(--accent-light)' }}>
+                        🔒 IP Hash: {v.ip_hash}
+                      </span>
+                    </div>
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Last Active: {formatDate(v.last_seen)}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    {/* Device & Browser Info */}
+                    <div className="flex flex-col gap-1 p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
+                      <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>💻 Device & Browser Specs:</span>
+                      <span className="font-mono text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>
+                        {v.user_agent ?? 'Unknown User Agent'}
+                      </span>
+                    </div>
+
+                    {/* Smart Activity Tracking */}
+                    <div className="flex flex-col gap-2 p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>🎭 Usernames Used ({userNames.length}):</span>
+                        <div className="flex flex-wrap gap-1">
+                          {userNames.map((u) => (
+                            <span key={u} className="px-2 py-0.5 rounded text-[11px] font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
+                              {u}
+                            </span>
+                          ))}
+                          {userNames.length === 0 && <span style={{ color: 'var(--text-secondary)' }}>None</span>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>🏠 Rooms Participated ({joinedRooms.length}):</span>
+                        <div className="flex flex-wrap gap-1">
+                          {joinedRooms.map((r) => (
+                            <span key={r.id} className="px-2 py-0.5 rounded text-[11px]" style={{ background: 'var(--surface)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}>
+                              {r.name}
+                            </span>
+                          ))}
+                          {joinedRooms.length === 0 && <span style={{ color: 'var(--text-secondary)' }}>None</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )
             })}
-            {filteredMessages.length === 0 && <Tr><Td><span style={{ color: 'var(--text-secondary)' }}>No messages</span></Td></Tr>}
-          </Table>
+            {filteredVisitors.length === 0 && <p className="text-sm text-center py-6" style={{ color: 'var(--text-secondary)' }}>No visitor profiles</p>}
+          </div>
         )}
 
-        {/* ── MEDIA ── */}
+        {/* ── MEDIA GALLERY ── */}
         {tab === 'media' && (
-          <Table headers={['Room', 'Type', 'OTV', 'Expires', 'Preserved', 'Save/Release', 'Delete']}>
+          <Table headers={['Preview', 'Room', 'Type', 'OTV', 'Expires', 'Preserved', 'Save/Release', 'Delete']}>
             {mediaMessages
               .filter((m) => !q || (m.content ?? '').toLowerCase().includes(q))
               .map((m) => {
                 const room = rooms.find((r) => r.id === m.room_id)
                 const hl   = hoursLeft(m.expires_at)
                 const isDeleted = !m.storage_path
+                const url = m.storage_path ? signedUrlsMap[m.storage_path] : null
+
                 return (
                   <Tr key={m.id}>
+                    <Td>
+                      {m.message_type === 'image' && url ? (
+                        <div className="flex items-center gap-2">
+                          {/* Thumbnail */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="Media" className="w-12 h-12 rounded-lg object-cover border border-purple-500/30" />
+                          <button
+                            onClick={() => setPreviewImage(url)}
+                            className="text-xs px-2.5 py-1 rounded-md font-medium"
+                            style={{ background: 'var(--accent)', color: '#fff' }}
+                          >
+                            View Large
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{m.message_type === 'voice' ? '🎙 Voice' : '—'}</span>
+                      )}
+                    </Td>
                     <Td mono>{room?.name ?? m.room_id.slice(0, 8) + '…'}</Td>
                     <Td><Badge color="yellow">{m.message_type}</Badge></Td>
                     <Td>
@@ -518,6 +703,14 @@ export default function AdminDashboard() {
           room={roomModal}
           messages={messages}
           onClose={() => setRoomModal(null)}
+        />
+      )}
+
+      {/* Admin Image Lightbox Modal */}
+      {previewImage && (
+        <AdminImageModal
+          url={previewImage}
+          onClose={() => setPreviewImage(null)}
         />
       )}
     </div>
