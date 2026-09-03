@@ -134,6 +134,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [preservingId, setPreservingId] = useState<string | null>(null)
   const [deletingId,   setDeletingId]   = useState<string | null>(null)
+  const [cleaningUp,   setCleaningUp]   = useState(false)
   const [roomModal, setRoomModal] = useState<Room | null>(null)
   const [authToken, setAuthToken] = useState<string | null>(null)
 
@@ -218,6 +219,26 @@ export default function AdminDashboard() {
     router.push('/admin')
   }
 
+  async function handleRunCleanup() {
+    if (!authToken) return
+    setCleaningUp(true)
+    try {
+      const res  = await fetch('/api/admin/run-cleanup', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+      const data = await res.json()
+      if (res.ok) {
+        alert(`Cleanup done — ${data.deleted ?? 0} expired media file(s) deleted.`)
+        loadData()
+      } else {
+        alert(data.error || 'Cleanup failed')
+      }
+    } finally {
+      setCleaningUp(false)
+    }
+  }
+
   // ── Filtered lists ──────────────────────────────────────────────────────
   const q = search.toLowerCase()
   const filteredRooms    = rooms.filter((r) => !q || r.name.toLowerCase().includes(q))
@@ -254,6 +275,15 @@ export default function AdminDashboard() {
             style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
           >
             {loading ? 'Loading…' : 'Refresh'}
+          </button>
+          <button
+            onClick={handleRunCleanup}
+            disabled={cleaningUp}
+            className="text-sm px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+            style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            title="Delete all expired media from storage"
+          >
+            {cleaningUp ? 'Cleaning…' : 'Run Cleanup'}
           </button>
           <button
             onClick={handleLogout}
