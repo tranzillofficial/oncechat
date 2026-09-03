@@ -2,7 +2,18 @@ import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 
 const ALLOWED_IMAGE = ['image/jpeg','image/png','image/gif','image/webp']
-const ALLOWED_VOICE = ['audio/webm','audio/ogg','audio/mpeg','audio/mp3','audio/wav']
+const ALLOWED_VOICE = [
+  'audio/webm',
+  'audio/webm;codecs=opus',
+  'audio/ogg',
+  'audio/ogg;codecs=opus',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/mp4',
+  'audio/aac',
+  'audio/x-m4a'
+]
 const MAX_IMAGE     = 10 * 1024 * 1024
 const MAX_VOICE     = 25 * 1024 * 1024
 const TTL_MS        = 48 * 60 * 60 * 1000
@@ -30,7 +41,9 @@ export async function POST(req: NextRequest) {
       if (!ALLOWED_IMAGE.includes(file.type)) return Response.json({ error: 'Invalid image type' }, { status: 400 })
       if (file.size > MAX_IMAGE) return Response.json({ error: 'Image too large (max 10 MB)' }, { status: 400 })
     } else if (mediaType === 'voice') {
-      if (!ALLOWED_VOICE.includes(file.type)) return Response.json({ error: 'Invalid audio type' }, { status: 400 })
+      const baseType = file.type.split(';')[0].trim()
+      const isAllowed = ALLOWED_VOICE.some((t) => t.split(';')[0].trim() === baseType) || ALLOWED_VOICE.includes(file.type)
+      if (!isAllowed) return Response.json({ error: 'Invalid audio type' }, { status: 400 })
       if (file.size > MAX_VOICE) return Response.json({ error: 'Voice note too large (max 25 MB)' }, { status: 400 })
     } else {
       return Response.json({ error: 'Invalid media type' }, { status: 400 })

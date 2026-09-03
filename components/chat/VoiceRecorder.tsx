@@ -13,16 +13,23 @@ export default function VoiceRecorder({ onRecorded, disabled = false }: VoiceRec
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const mimeTypeRef = useRef<string>('audio/webm')
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm')
         ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
         : 'audio/ogg'
 
+      mimeTypeRef.current = mimeType
       const recorder = new MediaRecorder(stream, { mimeType })
       chunksRef.current = []
 
@@ -31,9 +38,13 @@ export default function VoiceRecorder({ onRecorded, disabled = false }: VoiceRec
       }
 
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType })
-        onRecorded(blob, mimeType)
-        stream.getTracks().forEach((t) => t.stop())
+        const type = mimeTypeRef.current
+        const blob = new Blob(chunksRef.current, { type })
+        onRecorded(blob, type)
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop())
+          streamRef.current = null
+        }
         setSeconds(0)
       }
 
@@ -59,6 +70,25 @@ export default function VoiceRecorder({ onRecorded, disabled = false }: VoiceRec
     }
   }, [isRecording])
 
+  const cancelRecording = useCallback(() => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.onstop = null // Don't trigger onRecorded
+      mediaRecorderRef.current.stop()
+      mediaRecorderRef.current = null
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop())
+      streamRef.current = null
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+    setIsRecording(false)
+    setSeconds(0)
+    chunksRef.current = []
+  }, [])
+
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60)
     const sec = s % 60
@@ -67,17 +97,36 @@ export default function VoiceRecorder({ onRecorded, disabled = false }: VoiceRec
 
   if (isRecording) {
     return (
-      <button
-        type="button"
-        onClick={stopRecording}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium animate-pulse"
-        style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.3)' }}
-        aria-label="Stop recording"
-        title="Stop recording"
-      >
-        <span className="w-2 h-2 rounded-full" style={{ background: 'var(--danger)' }} />
-        {formatTime(seconds)}
-      </button>
+      <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 px-2.5 py-1.5 rounded-xl">
+        <button
+          type="button"
+          onClick={cancelRecording}
+          className="p-1 rounded-lg hover:bg-red-500/20 text-red-400"
+          aria-label="Cancel recording"
+          title="Cancel recording"
+        >
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        <span className="flex items-center gap-1 text-xs font-medium text-red-500 animate-pulse px-1 select-none">
+          <span className="w-2 h-2 rounded-full bg-red-500" />
+          {formatTime(seconds)}
+        </span>
+
+        <button
+          type="button"
+          onClick={stopRecording}
+          className="p-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+          aria-label="Send voice note"
+          title="Send voice note"
+        >
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
     )
   }
 

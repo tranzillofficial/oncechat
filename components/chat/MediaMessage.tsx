@@ -120,7 +120,7 @@ function Lightbox({
             style={{ background: 'rgba(0,0,0,0.5)' }}
           >
             <p className="text-white text-sm font-medium px-4 text-center">
-              🔒 Screenshot detected
+              🔒 Privacy protected
             </p>
           </div>
         )}
@@ -174,7 +174,7 @@ function ProtectedImage({
       {blurred && (
         <div className="absolute inset-0 flex items-center justify-center rounded-xl"
           style={{ background: 'rgba(0,0,0,0.4)' }}>
-          <p className="text-white text-xs font-medium">🔒 Screenshot detected</p>
+          <p className="text-white text-xs font-medium">🔒 Privacy protected</p>
         </div>
       )}
     </div>

@@ -24,6 +24,7 @@ export default function MessageInput({
   const [oneTimeView, setOneTimeView] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isTypingRef = useRef(false)
 
@@ -47,17 +48,15 @@ export default function MessageInput({
     }
   }
 
-  // Handle paste — if the clipboard contains an image, treat it like a file pick
   function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
     const items = Array.from(e.clipboardData?.items ?? [])
     const imageItem = items.find((item) => item.type.startsWith('image/'))
-    if (!imageItem) return          // no image → normal text paste
-    e.preventDefault()              // don't paste as text
+    if (!imageItem) return
+    e.preventDefault()
 
     const file = imageItem.getAsFile()
     if (!file) return
 
-    // Give it a readable name based on type
     const ext = file.type.split('/')[1] || 'png'
     const named = new File([file], `paste-${Date.now()}.${ext}`, { type: file.type })
     setPendingFile(named)
@@ -149,33 +148,68 @@ export default function MessageInput({
         </div>
       )}
 
-      <form onSubmit={handleFormSubmit} className="flex items-end gap-2 px-3 py-3">
-        {/* File upload */}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-          className="p-2 rounded-xl transition-colors disabled:opacity-40 flex-shrink-0"
-          style={{ color: oneTimeView || pendingFile ? 'var(--accent-light)' : 'var(--text-secondary)' }}
-          aria-label="Attach image"
-          title="Attach image"
-        >
-          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"
-            viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="3" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="m21 15-5-5L5 21" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
-          onChange={handleFileChange}
-          className="hidden"
-          aria-hidden="true"
-          tabIndex={-1}
-        />
+      <form onSubmit={handleFormSubmit} className="flex items-end gap-1.5 px-3 py-3">
+        {/* Media Icons Group (Left Side) */}
+        {!pendingFile && (
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            {/* Camera input */}
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={disabled}
+              className="p-2 rounded-xl transition-colors disabled:opacity-40"
+              style={{ color: 'var(--text-secondary)' }}
+              aria-label="Take photo"
+              title="Take photo"
+            >
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"
+                viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            </button>
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              className="hidden"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+
+            {/* File gallery upload */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled}
+              className="p-2 rounded-xl transition-colors disabled:opacity-40"
+              style={{ color: 'var(--text-secondary)' }}
+              aria-label="Attach image"
+              title="Attach image"
+            >
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"
+                viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="m21 15-5-5L5 21" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              onChange={handleFileChange}
+              className="hidden"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+
+            {/* Voice recorder */}
+            <VoiceRecorder onRecorded={onSendVoice} disabled={disabled} />
+          </div>
+        )}
 
         {/* Text area */}
         <textarea
@@ -195,16 +229,11 @@ export default function MessageInput({
           aria-label="Type a message"
         />
 
-        {/* Voice recorder */}
-        {!pendingFile && (
-          <VoiceRecorder onRecorded={onSendVoice} disabled={disabled} />
-        )}
-
-        {/* Send button */}
+        {/* Send button (Right Side) */}
         <button
           type="submit"
           disabled={disabled || (!text.trim() && !pendingFile)}
-          className="p-2 rounded-xl transition-colors disabled:opacity-40 flex-shrink-0"
+          className="p-2.5 rounded-xl transition-colors disabled:opacity-40 flex-shrink-0"
           style={{
             background: (text.trim() || pendingFile) ? 'var(--accent)' : 'var(--surface-2)',
             color: (text.trim() || pendingFile) ? '#fff' : 'var(--text-secondary)',
