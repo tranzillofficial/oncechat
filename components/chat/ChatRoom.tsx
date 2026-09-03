@@ -36,9 +36,9 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
 
   // ── Load session ─────────────────────────────────────────────────────────
   useEffect(() => {
-    const sid = sessionStorage.getItem('ranchat_session_id')
-    const un  = sessionStorage.getItem('ranchat_username')
-    const mid = sessionStorage.getItem('ranchat_member_id')
+    const sid = sessionStorage.getItem('oncechat_session_id')
+    const un  = sessionStorage.getItem('oncechat_username')
+    const mid = sessionStorage.getItem('oncechat_member_id')
     if (!sid || !un || !mid) { router.replace('/join'); return }
     setSessionId(sid); setUsername(un); setMemberId(mid)
   }, [router])
@@ -244,9 +244,9 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ memberId, sessionId, roomId }),
     })
-    sessionStorage.removeItem('ranchat_session_id')
-    sessionStorage.removeItem('ranchat_username')
-    sessionStorage.removeItem('ranchat_member_id')
+    sessionStorage.removeItem('oncechat_session_id')
+    sessionStorage.removeItem('oncechat_username')
+    sessionStorage.removeItem('oncechat_member_id')
     router.push('/')
   }
 
@@ -280,7 +280,7 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
       <header className="flex items-center justify-between px-4 py-3 flex-shrink-0"
         style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
         <div className="flex items-center gap-3">
-          <Image src="/ranchat-icon.png" alt="Ranchat" width={28} height={28} className="rounded-lg" />
+          <Image src="/oncechat-icon.png" alt="Oncechat" width={28} height={28} className="rounded-lg" />
           <div className="flex flex-col">
             <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{roomName}</span>
             {otherUser

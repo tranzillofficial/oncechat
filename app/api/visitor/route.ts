@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 
 async function hashIp(ip: string): Promise<string> {
-  const salt = process.env.IP_HASH_SALT || 'ranchat-salt'
+  const salt = process.env.IP_HASH_SALT || 'oncechat-salt'
   const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip + salt))
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
 }

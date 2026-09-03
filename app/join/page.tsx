@@ -58,9 +58,9 @@ export default function JoinRoomPage() {
       const joinData = await joinRes.json()
       if (!joinRes.ok) throw new Error(joinData.error || 'Failed to join room')
 
-      sessionStorage.setItem('ranchat_session_id', sessionId)
-      sessionStorage.setItem('ranchat_username',   trimmedUser)
-      sessionStorage.setItem('ranchat_member_id',  joinData.memberId)
+      sessionStorage.setItem('oncechat_session_id', sessionId)
+      sessionStorage.setItem('oncechat_username',   trimmedUser)
+      sessionStorage.setItem('oncechat_member_id',  joinData.memberId)
 
       router.push(`/room/${encodeURIComponent(trimmedRoom)}`)
     } catch (err) {
@@ -84,7 +84,7 @@ export default function JoinRoomPage() {
             </svg>
           </Link>
           <div className="flex items-center gap-2">
-            <Image src="/ranchat-icon.png" alt="" width={28} height={28} className="rounded-lg" />
+            <Image src="/oncechat-icon.png" alt="" width={28} height={28} className="rounded-lg" />
             <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
               Join Room
             </h1>

@@ -11,8 +11,8 @@ export default function HomePage() {
         {/* Logo */}
         <div className="flex flex-col items-center gap-3">
           <Image
-            src="/ranchat-icon.png"
-            alt="Ranchat"
+            src="/oncechat-icon.png"
+            alt="Oncechat"
             width={72}
             height={72}
             className="rounded-2xl"
@@ -22,7 +22,7 @@ export default function HomePage() {
             className="text-3xl font-bold tracking-tight"
             style={{ color: 'var(--text-primary)' }}
           >
-            Ranchat
+            Oncechat
           </h1>
           <p className="text-sm text-center" style={{ color: 'var(--text-secondary)' }}>
             Anonymous 1-to-1 chat rooms. No account needed.

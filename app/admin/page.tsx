@@ -44,7 +44,7 @@ export default function AdminLoginPage() {
     >
       <div className="w-full max-w-sm flex flex-col gap-6">
         <div className="flex flex-col items-center gap-2">
-          <Image src="/ranchat-icon.png" alt="Ranchat" width={48} height={48} className="rounded-xl" />
+          <Image src="/oncechat-icon.png" alt="Oncechat" width={48} height={48} className="rounded-xl" />
           <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
             Admin Login
           </h1>

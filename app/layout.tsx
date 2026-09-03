@@ -13,11 +13,11 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Ranchat — Anonymous 1-to-1 Chat',
+  title: 'Oncechat — Anonymous 1-to-1 Chat',
   description: 'Create or join a private room and chat anonymously in real time.',
   icons: {
-    icon: '/ranchat-icon.png',
-    apple: '/ranchat-icon.png',
+    icon: '/oncechat-icon.png',
+    apple: '/oncechat-icon.png',
   },
 }
 

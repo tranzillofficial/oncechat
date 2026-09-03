@@ -265,7 +265,7 @@ export default function AdminDashboard() {
         style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}
       >
         <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Ranchat Admin
+          Oncechat Admin
         </h1>
         <div className="flex items-center gap-3">
           <button
