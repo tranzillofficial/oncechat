@@ -318,16 +318,7 @@ export default function MediaMessage({
       return <span className="text-xs animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading…</span>
     if (loadState === 'error')
       return <span className="text-xs" style={{ color: 'var(--danger)' }}>Failed to load audio</span>
-    // eslint-disable-next-line jsx-a11y/media-has-caption
-    return (
-      <audio
-        controls
-        controlsList="nodownload noplaybackrate"
-        onContextMenu={(e) => e.preventDefault()}
-        src={signedUrl!}
-        className="max-w-[200px] h-8"
-      />
-    )
+    return <CustomAudioPlayer src={signedUrl!} isOwn={isOwn} />
   }
 
   // ─── Images ───────────────────────────────────────────────────────────
@@ -483,3 +474,116 @@ function ImagePlaceholderIcon() {
     </svg>
   )
 }
+
+function CustomAudioPlayer({ src, isOwn }: { src: string; isOwn: boolean }) {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    function onLoadedMetadata() {
+      if (audio) setDuration(audio.duration || 0)
+    }
+    function onTimeUpdate() {
+      if (audio) setCurrentTime(audio.currentTime || 0)
+    }
+    function onEnded() {
+      setIsPlaying(false)
+      setCurrentTime(0)
+    }
+
+    audio.addEventListener('loadedmetadata', onLoadedMetadata)
+    audio.addEventListener('timeupdate', onTimeUpdate)
+    audio.addEventListener('ended', onEnded)
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata)
+      audio.removeEventListener('timeupdate', onTimeUpdate)
+      audio.removeEventListener('ended', onEnded)
+    }
+  }, [src])
+
+  function togglePlay() {
+    if (!audioRef.current) return
+    if (isPlaying) {
+      audioRef.current.pause()
+      setIsPlaying(false)
+    } else {
+      audioRef.current.play()
+      setIsPlaying(true)
+    }
+  }
+
+  function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
+    const newTime = parseFloat(e.target.value)
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime
+      setCurrentTime(newTime)
+    }
+  }
+
+  function fmtSecs(s: number) {
+    if (isNaN(s) || !isFinite(s)) return '0:00'
+    const mins = Math.floor(s / 60)
+    const secs = Math.floor(s % 60)
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`
+  }
+
+  return (
+    <div className="flex items-center gap-2.5 w-52 sm:w-60 py-0.5" onContextMenu={(e) => e.preventDefault()}>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        controlsList="nodownload noplaybackrate"
+        onContextMenu={(e) => e.preventDefault()}
+      />
+
+      {/* Play / Pause button */}
+      <button
+        type="button"
+        onClick={togglePlay}
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 shadow"
+        style={{
+          background: isOwn ? '#fff' : 'var(--accent)',
+          color: isOwn ? 'var(--accent)' : '#fff',
+        }}
+        aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+      >
+        {isPlaying ? (
+          <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="4" width="4" height="16" rx="1" />
+            <rect x="14" y="4" width="4" height="16" rx="1" />
+          </svg>
+        ) : (
+          <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24" className="ml-0.5">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        )}
+      </button>
+
+      {/* Progress & duration */}
+      <div className="flex-1 flex flex-col gap-1 min-w-0">
+        <input
+          type="range"
+          min={0}
+          max={duration || 100}
+          step={0.1}
+          value={currentTime}
+          onChange={handleSeek}
+          className="w-full h-1 rounded-lg appearance-none cursor-pointer bg-white/20 accent-purple-400"
+        />
+        <div className="flex items-center justify-between text-[10px] opacity-80" style={{ color: 'var(--text-primary)' }}>
+          <span>{fmtSecs(currentTime)}</span>
+          <span>{fmtSecs(duration)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
