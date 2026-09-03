@@ -26,63 +26,62 @@ export async function POST(req: NextRequest) {
     const userAgent = req.headers.get('user-agent') || null
     const now       = new Date().toISOString()
 
-    // Smart identification: Match visitor by persistent Browser Fingerprint FIRST, then by IP Hash
-    let existingVisitor = null
-
-    if (fingerprint) {
-      const { data: byFp } = await supabase
-        .from('visitors')
-        .select('id, fingerprint, device_info')
-        .eq('fingerprint', fingerprint)
-        .maybeSingle()
-      existingVisitor = byFp
-    }
-
-    if (!existingVisitor) {
-      const { data: byIp } = await supabase
-        .from('visitors')
-        .select('id, fingerprint, device_info')
-        .eq('ip_hash', ipHash)
-        .maybeSingle()
-      existingVisitor = byIp
-    }
+    // Smart identification: Match visitor by IP Hash (standard DB column)
+    const { data: existingVisitor } = await supabase
+      .from('visitors')
+      .select('id')
+      .eq('ip_hash', ipHash)
+      .maybeSingle()
 
     let visitorId: string
     if (existingVisitor) {
-      // Update last seen, user agent, and save fingerprint/device_info if newly obtained
-      await supabase.from('visitors').update({
+      // Update last_seen and user_agent
+      const updateData: Record<string, unknown> = {
         last_seen: now,
         user_agent: userAgent,
-        fingerprint: fingerprint || existingVisitor.fingerprint,
-        device_info: deviceInfo || existingVisitor.device_info,
-      }).eq('id', existingVisitor.id)
+      }
+      if (fingerprint) updateData.fingerprint = fingerprint
+      if (deviceInfo) updateData.device_info = deviceInfo
+
+      await (async () => {
+        try {
+          await supabase.from('visitors').update(updateData).eq('id', existingVisitor.id)
+        } catch {
+          // ignore if fingerprint column is missing
+        }
+      })()
       visitorId = existingVisitor.id
     } else {
+      const insertData: Record<string, unknown> = {
+        ip_hash: ipHash,
+        user_agent: userAgent,
+      }
+      if (fingerprint) insertData.fingerprint = fingerprint
+      if (deviceInfo) insertData.device_info = deviceInfo
+
       const { data: nv, error: insertErr } = await supabase
         .from('visitors')
-        .insert({
-          ip_hash: ipHash,
-          user_agent: userAgent,
-          fingerprint: fingerprint || null,
-          device_info: deviceInfo || null,
-        })
+        .insert(insertData as any)
         .select('id')
         .single()
 
       if (insertErr || !nv) {
-        console.error('[visitor insert error]', insertErr?.message, insertErr?.details)
-        // Fallback query by fingerprint or ip_hash
-        const { data: rv } = await supabase
+        // Fallback without extra columns in case DB columns are missing
+        const { data: fallbackNv, error: fallbackErr } = await supabase
           .from('visitors')
+          .insert({ ip_hash: ipHash, user_agent: userAgent })
           .select('id')
-          .or(`ip_hash.eq.${ipHash}${fingerprint ? `,fingerprint.eq.${fingerprint}` : ''}`)
-          .limit(1)
-          .maybeSingle()
+          .single()
 
-        if (!rv) {
-          return Response.json({ error: `Failed to create visitor: ${insertErr?.message || 'Database error'}` }, { status: 500 })
+        if (fallbackErr || !fallbackNv) {
+          const { data: rv } = await supabase.from('visitors').select('id').eq('ip_hash', ipHash).maybeSingle()
+          if (!rv) {
+            return Response.json({ error: `Failed to create visitor: ${insertErr?.message || 'Database error'}` }, { status: 500 })
+          }
+          visitorId = rv.id
+        } else {
+          visitorId = fallbackNv.id
         }
-        visitorId = rv.id
       } else {
         visitorId = nv.id
       }

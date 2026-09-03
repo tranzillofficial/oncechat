@@ -28,6 +28,7 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
   const [roomClosed,  setRoomClosed]  = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [isUploading, setIsUploading] = useState(false)
+  const [copied,      setCopied]      = useState(false)
   const [error,       setError]       = useState<string | null>(null)
 
   const channelRef     = useRef<ReturnType<typeof supabase.channel> | null>(null)
@@ -297,7 +298,29 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
         <div className="flex items-center gap-3">
           <Image src="/oncechat-icon.png" alt="Oncechat" width={28} height={28} className="rounded-lg" />
           <div className="flex flex-col">
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{roomName}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{roomName}</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(roomName)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}
+                className="p-1 rounded-md transition-colors hover:bg-white/10 text-xs flex items-center gap-1"
+                style={{ color: copied ? 'var(--success)' : 'var(--text-secondary)' }}
+                aria-label="Copy room name"
+                title="Copy room name"
+              >
+                {copied ? (
+                  <span className="text-[10px] font-bold text-emerald-400">✓ Copied</span>
+                ) : (
+                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
+            </div>
             {otherUser
               ? <OnlineStatus username={otherUser} isOnline={otherOnline} />
               : <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Waiting for someone…</span>
