@@ -387,6 +387,7 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
         messages={messages}
         sessionId={sessionId ?? ''}
         currentUsername={username ?? ''}
+        otherUsername={otherUser ?? ''}
         onDeleteMessage={handleDeleteMessage}
       />
       {typingUser && <TypingIndicator username={typingUser} />}

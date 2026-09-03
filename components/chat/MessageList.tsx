@@ -8,6 +8,7 @@ interface Props {
   messages: MessageWithMeta[]
   sessionId: string
   currentUsername: string
+  otherUsername?: string
   adminView?: boolean
   onDeleteMessage?: (messageId: string) => void
 }
@@ -42,6 +43,7 @@ export default function MessageList({
   messages,
   sessionId,
   currentUsername,
+  otherUsername,
   adminView = false,
   onDeleteMessage,
 }: Props) {
@@ -81,7 +83,7 @@ export default function MessageList({
 
             {showName && (
               <span className="text-xs mb-1 px-1 font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                {adminView ? (msg.sender_session_id?.slice(0, 8) || 'User') : currentUsername}
+                {adminView ? (msg.sender_session_id?.slice(0, 8) || 'User') : (otherUsername || 'Partner')}
               </span>
             )}
 

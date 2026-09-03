@@ -367,7 +367,7 @@ export default function MediaMessage({
               src={signedUrl!}
               width={240}
               height={180}
-              className="rounded-xl object-cover max-w-[240px] max-h-[180px]"
+              className="rounded-xl object-cover w-full max-w-[210px] max-h-[160px]"
               onClick={() => setLightboxOpen(true)}
               blurred={blurred}
             />
@@ -430,7 +430,7 @@ export default function MediaMessage({
           src={signedUrl!}
           width={240}
           height={180}
-          className="rounded-xl object-cover max-w-[240px] max-h-[180px]"
+          className="rounded-xl object-cover w-full max-w-[210px] max-h-[160px]"
           onClick={() => setLightboxOpen(true)}
           blurred={blurred || (oneTimeView && isOwn)}
         />
@@ -534,7 +534,7 @@ function CustomAudioPlayer({ src, isOwn }: { src: string; isOwn: boolean }) {
   }
 
   return (
-    <div className="flex items-center gap-2.5 w-52 sm:w-60 py-0.5" onContextMenu={(e) => e.preventDefault()}>
+    <div className="flex items-center gap-2 w-full max-w-[200px] py-0.5 overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio
         ref={audioRef}

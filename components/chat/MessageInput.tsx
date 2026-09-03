@@ -147,7 +147,6 @@ export default function MessageInput({
 
   function addEmoji(emoji: string) {
     setText((prev) => prev + emoji)
-    textareaRef.current?.focus()
   }
 
   return (
@@ -285,7 +284,6 @@ export default function MessageInput({
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          onFocus={() => setShowEmojiPicker(false)}
           placeholder={pendingFile ? 'Send image… (Press Enter)' : 'Message…'}
           disabled={disabled || !!pendingFile}
           rows={1}
