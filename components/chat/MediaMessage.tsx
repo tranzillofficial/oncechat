@@ -167,8 +167,7 @@ function ProtectedImage({
           filter: blurred ? 'blur(16px) brightness(0.3)' : 'none',
           transition: 'filter 0.15s',
           pointerEvents: 'none',
-          // @ts-expect-error — webkit non-standard
-          WebkitTouchCallout: 'none',
+          WebkitTouchCallout: 'none' as 'none',
         }}
         onContextMenu={(e) => e.preventDefault()}
       />

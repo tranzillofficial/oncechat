@@ -99,11 +99,11 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
       if (others[0]) setOtherUser(others[0].username)
     })
     ch.on('presence', { event: 'join' }, ({ newPresences }) => {
-      const j = (newPresences as PresencePayload[])[0]
+      const j = (newPresences as unknown as PresencePayload[])[0]
       if (j?.username !== username) { setOtherUser(j.username); setOtherOnline(true) }
     })
     ch.on('presence', { event: 'leave' }, ({ leftPresences }) => {
-      const l = (leftPresences as PresencePayload[])[0]
+      const l = (leftPresences as unknown as PresencePayload[])[0]
       if (l?.username !== username) setOtherOnline(false)
     })
 

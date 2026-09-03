@@ -64,40 +64,61 @@ export interface MessageWithMeta extends Message {
   is_own?: boolean
 }
 
+// ── Supabase Database type ────────────────────────────────────────────────
+// Row types need to satisfy GenericTable.Row = Record<string, unknown>.
+// In TypeScript strict mode, named interfaces don't automatically satisfy
+// index signatures, so we use an intersection with Record<string, unknown>.
+type AsRow<T> = T & Record<string, unknown>
+
+// Make nullable columns optional in Insert types (they have DB defaults)
+type InsertRow<T> = AsRow<{
+  [K in keyof T as null extends T[K] ? never : K]: T[K]
+} & {
+  [K in keyof T as null extends T[K] ? K : never]?: T[K]
+}>
+
 export interface Database {
   public: {
     Tables: {
       rooms: {
-        Row: Room
-        Insert: Omit<Room, 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Omit<Room, 'id'>>
+        Row: AsRow<Room>
+        Insert: InsertRow<Omit<Room, 'id' | 'created_at' | 'updated_at'>>
+        Update: AsRow<Partial<Omit<Room, 'id'>>>
+        Relationships: []
       }
       visitors: {
-        Row: Visitor
-        Insert: Omit<Visitor, 'id' | 'first_seen' | 'last_seen'>
-        Update: Partial<Omit<Visitor, 'id'>>
+        Row: AsRow<Visitor>
+        Insert: InsertRow<Omit<Visitor, 'id' | 'first_seen' | 'last_seen'>>
+        Update: AsRow<Partial<Omit<Visitor, 'id'>>>
+        Relationships: []
       }
       sessions: {
-        Row: Session
-        Insert: Omit<Session, 'id' | 'started_at' | 'last_seen'>
-        Update: Partial<Omit<Session, 'id'>>
+        Row: AsRow<Session>
+        Insert: InsertRow<Omit<Session, 'id' | 'started_at' | 'last_seen'>>
+        Update: AsRow<Partial<Omit<Session, 'id'>>>
+        Relationships: []
       }
       room_members: {
-        Row: RoomMember
-        Insert: Omit<RoomMember, 'id' | 'joined_at'>
-        Update: Partial<Omit<RoomMember, 'id'>>
+        Row: AsRow<RoomMember>
+        Insert: InsertRow<Omit<RoomMember, 'id' | 'joined_at'>>
+        Update: AsRow<Partial<Omit<RoomMember, 'id'>>>
+        Relationships: []
       }
       messages: {
-        Row: Message
-        Insert: Omit<Message, 'id' | 'created_at'>
-        Update: Partial<Omit<Message, 'id'>>
+        Row: AsRow<Message>
+        Insert: InsertRow<Omit<Message, 'id' | 'created_at'>>
+        Update: AsRow<Partial<Omit<Message, 'id'>>>
+        Relationships: []
       }
       admins: {
-        Row: Admin
-        Insert: Admin
-        Update: Partial<Admin>
+        Row: AsRow<Admin>
+        Insert: AsRow<Admin>
+        Update: AsRow<Partial<Admin>>
+        Relationships: []
       }
     }
+    Views: Record<never, never>
+    Functions: Record<never, never>
   }
 }
 
