@@ -12,6 +12,12 @@ interface MessageInputProps {
   disabled?: boolean
 }
 
+const COMMON_EMOJIS = [
+  '😀', '😂', '😍', '😎', '😊', '👍', '❤️', '🔥', '🎉', '🙏',
+  '😭', '🤔', '🙈', '🚀', '💯', '✨', '👀', '🤐', '😮', '😴',
+  '🤡', '💩', '✌️', '💪', '🤝', '🥳', '👇', '👈', '👉', '👋'
+]
+
 export default function MessageInput({
   onSendText,
   onSendFile,
@@ -23,7 +29,10 @@ export default function MessageInput({
   const [text, setText] = useState('')
   const [oneTimeView, setOneTimeView] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isTypingRef = useRef(false)
 
@@ -43,7 +52,13 @@ export default function MessageInput({
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      submitText()
+      if (pendingFile) {
+        onSendFile(pendingFile, oneTimeView)
+        setPendingFile(null)
+        setOneTimeView(false)
+      } else {
+        submitText()
+      }
     }
   }
 
@@ -66,6 +81,7 @@ export default function MessageInput({
     if (!trimmed || disabled) return
     onSendText(trimmed)
     setText('')
+    setShowEmojiPicker(false)
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
     isTypingRef.current = false
     onTypingStop()
@@ -95,8 +111,32 @@ export default function MessageInput({
     setOneTimeView(false)
   }
 
+  function addEmoji(emoji: string) {
+    setText((prev) => prev + emoji)
+    textareaRef.current?.focus()
+  }
+
   return (
-    <div style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+    <div className="relative" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+      {/* WhatsApp-style Emoji Picker Popup */}
+      {showEmojiPicker && (
+        <div
+          className="absolute bottom-full left-3 mb-2 p-3 rounded-2xl shadow-2xl border backdrop-blur-md z-40 grid grid-cols-6 gap-2 w-64 animate-in fade-in slide-in-from-bottom-2"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
+          {COMMON_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => addEmoji(emoji)}
+              className="text-xl p-1.5 rounded-xl hover:bg-white/10 transition-transform active:scale-125"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Pending file preview + one-time-view option */}
       {pendingFile && (
         <div
@@ -104,7 +144,7 @@ export default function MessageInput({
           style={{ borderBottom: '1px solid var(--border)' }}
         >
           <span className="text-xs font-medium truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
-            📎 {pendingFile.name}
+            📎 {pendingFile.name} <span className="text-[10px] opacity-75">(Press Enter to send)</span>
           </span>
 
           {/* One-time view toggle */}
@@ -178,6 +218,25 @@ export default function MessageInput({
               tabIndex={-1}
             />
 
+            {/* WhatsApp-style Emoji Picker Button (Before Voice Recorder) */}
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker((v) => !v)}
+              disabled={disabled}
+              className="p-2 rounded-xl transition-colors disabled:opacity-40"
+              style={{ color: showEmojiPicker ? 'var(--accent-light)' : 'var(--text-secondary)' }}
+              aria-label="Emoji picker"
+              title="Choose Emoji"
+            >
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"
+                viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 14s1.5 2 4 2 4-2 4-2" strokeLinecap="round" />
+                <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="3" strokeLinecap="round" />
+                <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+            </button>
+
             {/* Voice recorder */}
             <VoiceRecorder onRecorded={onSendVoice} disabled={disabled} />
           </div>
@@ -185,11 +244,12 @@ export default function MessageInput({
 
         {/* Text area */}
         <textarea
+          ref={textareaRef}
           value={text}
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={pendingFile ? 'Send image…' : 'Message…'}
+          placeholder={pendingFile ? 'Send image… (Press Enter)' : 'Message…'}
           disabled={disabled || !!pendingFile}
           rows={1}
           className="flex-1 resize-none rounded-xl px-3 py-2.5 text-sm outline-none min-h-[40px] max-h-[120px] leading-relaxed disabled:opacity-40"
