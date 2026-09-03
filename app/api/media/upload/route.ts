@@ -53,7 +53,9 @@ export async function POST(req: NextRequest) {
     const storagePath = `${roomId}/${mediaType}/${sessionId}-${Date.now()}.${ext}`
     const expiresAt   = new Date(Date.now() + TTL_MS).toISOString()
 
-    const baseContentType = file.type || (mediaType === 'image' ? 'image/jpeg' : 'audio/webm')
+    const rawType = file.type || (mediaType === 'image' ? 'image/jpeg' : 'audio/webm')
+    // Supabase Storage requires clean mime types without parameters (e.g., 'audio/webm', not 'audio/webm;codecs=opus')
+    const baseContentType = rawType.split(';')[0].trim()
     const { error: upErr } = await supabase.storage
       .from('chat-media').upload(storagePath, await file.arrayBuffer(), { contentType: baseContentType, upsert: false })
     if (upErr) {
