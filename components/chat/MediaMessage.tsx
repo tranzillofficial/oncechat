@@ -319,7 +319,15 @@ export default function MediaMessage({
     if (loadState === 'error')
       return <span className="text-xs" style={{ color: 'var(--danger)' }}>Failed to load audio</span>
     // eslint-disable-next-line jsx-a11y/media-has-caption
-    return <audio controls src={signedUrl!} className="max-w-[200px] h-8" />
+    return (
+      <audio
+        controls
+        controlsList="nodownload noplaybackrate"
+        onContextMenu={(e) => e.preventDefault()}
+        src={signedUrl!}
+        className="max-w-[200px] h-8"
+      />
+    )
   }
 
   // ─── Images ───────────────────────────────────────────────────────────

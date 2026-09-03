@@ -156,6 +156,19 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
     return () => { ch.unsubscribe(); channelRef.current = null }
   }, [roomId, sessionId, username, supabase])
 
+  // Beacon on tab close / navigate away so active count drops immediately
+  useEffect(() => {
+    function handleUnload() {
+      if (!memberId || !sessionId || !roomId) return
+      const payload = JSON.stringify({ memberId, sessionId, roomId })
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/room/leave', payload)
+      }
+    }
+    window.addEventListener('beforeunload', handleUnload)
+    return () => window.removeEventListener('beforeunload', handleUnload)
+  }, [memberId, sessionId, roomId])
+
   function scheduleSeenFlush(sid: string) {
     if (seenFlushTimer.current) return
     seenFlushTimer.current = setTimeout(async () => {
@@ -196,6 +209,33 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
     }
   }
 
+  // ── Delete message handler ──────────────────────────────────────────────
+  async function handleDeleteMessage(messageId: string) {
+    if (!sessionId) return
+    try {
+      const res = await fetch('/api/messages/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId, sessionId }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        alert(data.error || 'Failed to delete message')
+      } else {
+        // Optimistically update local message list
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, content: `__DELETED_BY_USER__::${m.content || ''}` }
+              : m
+          )
+        )
+      }
+    } catch (err) {
+      console.error('[handleDeleteMessage]', err)
+    }
+  }
+
   // ── Send handlers ─────────────────────────────────────────────────────────
 
   async function handleSendText(text: string) {
@@ -204,19 +244,21 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
 
   async function handleSendFile(file: File, oneTimeView: boolean) {
     if (!sessionId || !roomId) return
+    const mime = file.type || ''
+    const isAudio = mime.includes('audio')
+    const mediaType: 'voice' | 'image' = isAudio ? 'voice' : 'image';
 
-    // Do background upload non-blocking so UI adds message instantly
-    (async () => {
+    void (async () => {
       try {
         const fd = new FormData()
         fd.append('file', file); fd.append('sessionId', sessionId)
-        fd.append('roomId', roomId); fd.append('mediaType', 'image')
-        fd.append('oneTimeView', String(oneTimeView))
+        fd.append('roomId', roomId); fd.append('mediaType', mediaType)
+        fd.append('oneTimeView', isAudio ? 'false' : `${oneTimeView}`)
         const res  = await fetch('/api/media/upload', { method: 'POST', body: fd })
         const data = await res.json()
         if (!res.ok) { alert(data.error || 'Upload failed'); return }
         await sendMessage({
-          messageType: 'image',
+          messageType: mediaType,
           content: null,
           storagePath: data.storagePath,
           expiresAt: data.expiresAt,
@@ -233,8 +275,8 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
     if (!sessionId || !roomId || isUploading) return
     setIsUploading(true)
     try {
-      const ext  = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp3') ? 'mp3' : 'webm'
-      const file = new File([blob], `voice.${ext}`, { type: mimeType })
+      const ext  = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp3') ? 'mp3' : mimeType.includes('wav') ? 'wav' : mimeType.includes('m4a') ? 'm4a' : 'webm'
+      const file = blob instanceof File ? blob : new File([blob], `voice.${ext}`, { type: mimeType })
       const fd   = new FormData()
       fd.append('file', file); fd.append('sessionId', sessionId)
       fd.append('roomId', roomId); fd.append('mediaType', 'voice')
@@ -321,10 +363,7 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
                 )}
               </button>
             </div>
-            {otherUser
-              ? <OnlineStatus username={otherUser} isOnline={otherOnline} />
-              : <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Waiting for someone…</span>
-            }
+            <OnlineStatus username={otherUser ?? ''} isOnline={!!otherUser && otherOnline} />
           </div>
         </div>
         <button onClick={handleLeave} className="text-xs px-3 py-1.5 rounded-lg"
@@ -333,7 +372,12 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
         </button>
       </header>
 
-      <MessageList messages={messages} sessionId={sessionId ?? ''} currentUsername={username ?? ''} />
+      <MessageList
+        messages={messages}
+        sessionId={sessionId ?? ''}
+        currentUsername={username ?? ''}
+        onDeleteMessage={handleDeleteMessage}
+      />
       {typingUser && <TypingIndicator username={typingUser} />}
       <MessageInput
         onSendText={handleSendText} onSendFile={handleSendFile} onSendVoice={handleSendVoice}
@@ -343,3 +387,4 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
     </div>
   )
 }
+

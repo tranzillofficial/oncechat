@@ -6,17 +6,34 @@ interface OnlineStatusProps {
 }
 
 export default function OnlineStatus({ username, isOnline }: OnlineStatusProps) {
+  if (!isOnline || !username) {
+    return (
+      <span
+        className="flex items-center gap-1.5 text-xs"
+        style={{ color: 'var(--text-secondary)' }}
+        aria-label="Just you in room"
+      >
+        <span
+          className="w-2 h-2 rounded-full"
+          style={{ background: 'var(--text-secondary)' }}
+        />
+        just you
+      </span>
+    )
+  }
+
   return (
     <span
-      className="flex items-center gap-1.5 text-xs"
+      className="flex items-center gap-1.5 text-xs font-medium"
       style={{ color: 'var(--text-secondary)' }}
-      aria-label={`${username} is ${isOnline ? 'online' : 'offline'}`}
+      aria-label={`Online with ${username}`}
     >
       <span
-        className={`w-2 h-2 rounded-full ${isOnline ? 'animate-pulse' : ''}`}
-        style={{ background: isOnline ? 'var(--success)' : 'var(--text-secondary)' }}
+        className="w-2 h-2 rounded-full animate-pulse"
+        style={{ background: 'var(--success)' }}
       />
-      {username} {isOnline ? 'online' : 'offline'}
+      you , <span style={{ color: 'var(--text-primary)' }}>{username}</span>
     </span>
   )
 }
+

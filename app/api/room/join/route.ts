@@ -22,14 +22,23 @@ export async function POST(req: NextRequest) {
     if (room.status === 'closed') return Response.json({ error: 'This room is closed' }, { status: 403 })
 
     // Count active members using is_active (boolean column)
-    const { count } = await supabase.from('room_members')
-      .select('id', { count: 'exact', head: true }).eq('room_id', room.id).eq('is_active', true)
-    if ((count ?? 0) >= 2) return Response.json({ error: 'Room is full (max 2 people)' }, { status: 403 })
+    const { count, data: activeMembers } = await supabase.from('room_members')
+      .select('id, session_id, username', { count: 'exact' }).eq('room_id', room.id).eq('is_active', true)
 
-    // Check for duplicate username using is_active
-    const { data: dup } = await supabase.from('room_members')
-      .select('id').eq('room_id', room.id).eq('username', trimmedUser).eq('is_active', true).maybeSingle()
+    const existingMember = activeMembers?.find((m) => m.session_id === sessionId)
+
+    if (!existingMember && (count ?? 0) >= 2) return Response.json({ error: 'Room is full (max 2 people)' }, { status: 403 })
+
+    // Check for duplicate username using is_active (unless it's the exact same session rejoining)
+    const dup = activeMembers?.find((m) => m.username === trimmedUser && m.session_id !== sessionId)
     if (dup) return Response.json({ error: 'That username is already active in this room' }, { status: 409 })
+
+    if (existingMember) {
+      // Refresh username and return existing member ID
+      await supabase.from('room_members').update({ username: trimmedUser }).eq('id', existingMember.id)
+      await supabase.from('sessions').update({ username: trimmedUser, last_seen: new Date().toISOString() }).eq('id', sessionId)
+      return Response.json({ roomId: room.id, memberId: existingMember.id })
+    }
 
     await supabase.from('sessions').update({ username: trimmedUser, last_seen: new Date().toISOString() }).eq('id', sessionId)
 

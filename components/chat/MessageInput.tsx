@@ -191,15 +191,15 @@ export default function MessageInput({
         {/* Media Icons Group (Left Side) */}
         {!pendingFile && (
           <div className="flex items-center gap-0.5 flex-shrink-0">
-            {/* File gallery upload */}
+            {/* File gallery / image / audio upload */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled}
               className="p-2 rounded-xl transition-colors disabled:opacity-40"
               style={{ color: 'var(--text-secondary)' }}
-              aria-label="Attach image"
-              title="Attach image"
+              aria-label="Attach image or audio"
+              title="Attach image or audio file"
             >
               <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"
                 viewBox="0 0 24 24" aria-hidden="true">
@@ -211,7 +211,7 @@ export default function MessageInput({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp"
+              accept="image/jpeg,image/png,image/gif,image/webp,audio/*"
               onChange={handleFileChange}
               className="hidden"
               aria-hidden="true"

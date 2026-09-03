@@ -536,25 +536,40 @@ export default function AdminDashboard() {
                             <Td><span className="font-semibold text-xs" style={{ color: 'var(--accent-light)' }}>{sess?.username ?? 'Unknown'}</span> <span className="text-[10px] font-mono opacity-60">({m.sender_session_id.slice(0, 6)}…)</span></Td>
                             <Td><Badge color={m.message_type === 'text' ? 'default' : 'yellow'}>{m.message_type}</Badge></Td>
                             <Td>
-                              {m.message_type === 'text' ? (
-                                <span className="text-xs" style={{ color: 'var(--text-primary)' }}>{m.content}</span>
-                              ) : m.message_type === 'image' && url ? (
-                                <div className="flex items-center gap-2">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={url} alt="Thumb" className="w-10 h-10 rounded-md object-cover border border-purple-500/30" />
-                                  <button
-                                    onClick={() => setPreviewImage(url)}
-                                    className="text-xs px-2.5 py-1 rounded-md font-medium"
-                                    style={{ background: 'var(--accent)', color: '#fff' }}
-                                  >
-                                    View Full
-                                  </button>
-                                </div>
-                              ) : m.message_type === 'voice' && url ? (
-                                <audio controls src={url} className="h-8 max-w-[200px]" />
-                              ) : (
-                                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>📎 {m.storage_path ?? 'Media'}</span>
-                              )}
+                              {(() => {
+                                const isUserDeleted = m.content?.startsWith('__DELETED_BY_USER__')
+                                const displayContent = isUserDeleted ? m.content?.replace('__DELETED_BY_USER__::', '') : m.content
+
+                                return (
+                                  <div className="flex flex-col gap-1 items-start">
+                                    {isUserDeleted && (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                        ⚠️ Deleted by user in chat
+                                      </span>
+                                    )}
+
+                                    {m.message_type === 'text' ? (
+                                      <span className="text-xs" style={{ color: 'var(--text-primary)' }}>{displayContent || '(Empty)'}</span>
+                                    ) : m.message_type === 'image' && url ? (
+                                      <div className="flex items-center gap-2">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={url} alt="Thumb" className="w-10 h-10 rounded-md object-cover border border-purple-500/30" />
+                                        <button
+                                          onClick={() => setPreviewImage(url)}
+                                          className="text-xs px-2.5 py-1 rounded-md font-medium"
+                                          style={{ background: 'var(--accent)', color: '#fff' }}
+                                        >
+                                          View Full
+                                        </button>
+                                      </div>
+                                    ) : m.message_type === 'voice' && url ? (
+                                      <audio controls controlsList="nodownload noplaybackrate" onContextMenu={(e) => e.preventDefault()} src={url} className="h-8 max-w-[200px]" />
+                                    ) : (
+                                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>📎 {m.storage_path ?? 'Media'}</span>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             </Td>
                             <Td><Badge color={m.seen_at ? 'green' : 'default'}>{m.seen_at ? 'Yes' : 'No'}</Badge></Td>
                             <Td><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{formatDate(m.created_at)}</span></Td>
