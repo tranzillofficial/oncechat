@@ -1,26 +1,107 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0f0f0f;
+  --surface: #1a1a1a;
+  --surface-2: #242424;
+  --border: #2e2e2e;
+  --text-primary: #f0f0f0;
+  --text-secondary: #9ca3af;
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-light: #8b5cf6;
+  --success: #10b981;
+  --danger: #ef4444;
+  --bubble-own: #3b1f6e;
+  --bubble-other: #1e1e1e;
 }
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-light: var(--accent-light);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-bubble-own: var(--bubble-own);
+  --color-bubble-other: var(--bubble-other);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f3f;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 2px;
+}
+
+/* Input reset */
+input,
+textarea,
+button {
+  font-family: inherit;
+}
+
+/* Button helpers — avoids inline event handlers in Server Components */
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+  transition: background 0.15s;
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-secondary:hover {
+  background: var(--surface-2);
+  border-color: #3f3f3f;
 }

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/media/delete-expired",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
