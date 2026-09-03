@@ -172,7 +172,7 @@ export default function MessageInput({
               ref={cameraInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
+              capture="user"
               onChange={handleFileChange}
               className="hidden"
               aria-hidden="true"

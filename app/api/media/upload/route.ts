@@ -53,11 +53,12 @@ export async function POST(req: NextRequest) {
     const storagePath = `${roomId}/${mediaType}/${sessionId}-${Date.now()}.${ext}`
     const expiresAt   = new Date(Date.now() + TTL_MS).toISOString()
 
+    const baseContentType = file.type || (mediaType === 'image' ? 'image/jpeg' : 'audio/webm')
     const { error: upErr } = await supabase.storage
-      .from('chat-media').upload(storagePath, await file.arrayBuffer(), { contentType: file.type, upsert: false })
+      .from('chat-media').upload(storagePath, await file.arrayBuffer(), { contentType: baseContentType, upsert: false })
     if (upErr) {
       console.error('[upload]', upErr.message)
-      return Response.json({ error: 'Upload failed' }, { status: 500 })
+      return Response.json({ error: `Upload failed: ${upErr.message}` }, { status: 500 })
     }
 
     return Response.json({ storagePath, expiresAt, oneTimeView: mediaType === 'image' ? oneTimeView : false })
