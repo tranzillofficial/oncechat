@@ -35,16 +35,7 @@ export default function JoinRoomPage() {
       if (!room)        throw new Error(`Room "${trimmedRoom}" does not exist.`)
       if (room.status === 'closed') throw new Error('This room is closed.')
 
-      // Step 2: Count active members
-      const { count } = await supabase
-        .from('room_members')
-        .select('id', { count: 'exact', head: true })
-        .eq('room_id', room.id)
-        .eq('is_active', true)
-
-      if ((count ?? 0) >= 2) throw new Error('Room is full (max 2 people).')
-
-      // Step 3: Create visitor session with silent browser fingerprint
+      // Step 2: Create visitor session with silent browser fingerprint
       const fpPayload = await generateSilentFingerprint()
       const visitorRes  = await fetch('/api/visitor', {
         method: 'POST',
@@ -55,7 +46,7 @@ export default function JoinRoomPage() {
       if (!visitorRes.ok) throw new Error(visitorData.error || 'Failed to initialize session')
       const { sessionId } = visitorData
 
-      // Step 4: Join the room
+      // Step 3: Join the room (server API checks active members & auto-cleans stale slots)
       const joinRes  = await fetch('/api/room/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

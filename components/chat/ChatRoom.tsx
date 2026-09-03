@@ -156,6 +156,17 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
     return () => { ch.unsubscribe(); channelRef.current = null }
   }, [roomId, sessionId, username, supabase])
 
+  // Active heartbeat: update session last_seen every 10s while in room
+  useEffect(() => {
+    if (!sessionId) return
+    const ping = () => {
+      supabase.from('sessions').update({ last_seen: new Date().toISOString() }).eq('id', sessionId).then(() => {})
+    }
+    ping()
+    const interval = setInterval(ping, 10000)
+    return () => clearInterval(interval)
+  }, [sessionId, supabase])
+
   // Beacon on tab close / navigate away so active count drops immediately
   useEffect(() => {
     function handleUnload() {
