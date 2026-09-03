@@ -70,11 +70,17 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (insertErr || !nv) {
-        // Fallback query if race condition occurred
-        const { data: rv } = await supabase.from('visitors').select('id').eq('ip_hash', ipHash).maybeSingle()
+        console.error('[visitor insert error]', insertErr?.message, insertErr?.details)
+        // Fallback query by fingerprint or ip_hash
+        const { data: rv } = await supabase
+          .from('visitors')
+          .select('id')
+          .or(`ip_hash.eq.${ipHash}${fingerprint ? `,fingerprint.eq.${fingerprint}` : ''}`)
+          .limit(1)
+          .maybeSingle()
+
         if (!rv) {
-          console.error('[visitor]', insertErr?.message)
-          return Response.json({ error: 'Failed to create visitor' }, { status: 500 })
+          return Response.json({ error: `Failed to create visitor: ${insertErr?.message || 'Database error'}` }, { status: 500 })
         }
         visitorId = rv.id
       } else {
