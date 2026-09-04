@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, resolveMember } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,13 +24,8 @@ export async function POST(req: NextRequest) {
       .from('sessions').select('id').eq('id', sessionId).maybeSingle()
     if (!session) return Response.json({ error: 'Invalid session' }, { status: 401 })
 
-    // Verify the caller is a member of the room
-    const { data: member } = await supabase
-      .from('room_members')
-      .select('id, is_active')
-      .eq('session_id', sessionId)
-      .eq('room_id', roomId)
-      .maybeSingle()
+    // Verify the caller is a member of the room (with visitor fallback to heal session drift)
+    const member = await resolveMember(supabase, sessionId, roomId)
     if (!member) return Response.json({ error: 'Not a member of this room' }, { status: 403 })
 
     // Ensure member is active

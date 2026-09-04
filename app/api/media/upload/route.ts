@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, resolveMember } from '@/lib/supabase/server'
 
 const ALLOWED_IMAGE = ['image/jpeg','image/png','image/gif','image/webp']
 const ALLOWED_VOICE = [
@@ -32,13 +32,14 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // Validate room membership
-    const { data: member } = await supabase.from('room_members')
-      .select('id').eq('session_id', sessionId).eq('room_id', roomId).maybeSingle()
+    // Validate room membership (with fallback to visitor sessions to handle session_id drift)
+    const member = await resolveMember(supabase, sessionId, roomId)
     if (!member) return Response.json({ error: 'Not a member of this room' }, { status: 403 })
 
-    // Ensure member is active
-    await supabase.from('room_members').update({ is_active: true }).eq('id', member.id)
+    // Ensure member is active (already handled by resolveMember fallback, but double-check)
+    if (!member.is_active) {
+      await supabase.from('room_members').update({ is_active: true }).eq('id', member.id)
+    }
 
     if (mediaType === 'image') {
       if (!ALLOWED_IMAGE.includes(file.type)) return Response.json({ error: 'Invalid image type' }, { status: 400 })
