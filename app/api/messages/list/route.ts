@@ -85,9 +85,15 @@ export async function GET(req: NextRequest) {
       return Response.json({ error: 'Failed to fetch messages' }, { status: 500 })
     }
 
+    const currentMemberId = member.id
+
     const messages = (rawMessages ?? []).map((m) => ({
       ...m,
-      is_own: visitorSessionIds.has(m.sender_session_id),
+      // Primary: sender_member_id (stable — survives username & session changes)
+      // Fallback: visitor session match (for messages sent before this column existed)
+      is_own: m.sender_member_id != null
+        ? m.sender_member_id === currentMemberId
+        : visitorSessionIds.has(m.sender_session_id),
     }))
 
     // Fire-and-forget lazy cleanup — doesn't block the response

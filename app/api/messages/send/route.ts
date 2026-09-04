@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       .insert({
         room_id: roomId,
         sender_session_id: sessionId,
+        sender_member_id: member.id,   // stable link — survives username/session changes
         message_type: messageType,
         content: content ?? null,
         storage_path: storagePath ?? null,

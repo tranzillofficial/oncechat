@@ -46,6 +46,7 @@ export interface Message {
   id: string
   room_id: string
   sender_session_id: string    // actual column name in DB
+  sender_member_id: string | null  // FK to room_members — stable across session/username changes
   message_type: MessageType
   content: string | null
   storage_path: string | null
