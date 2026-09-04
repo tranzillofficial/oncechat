@@ -119,6 +119,16 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
       { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
       (payload) => {
         const msg = payload.new as MessageWithMeta
+        if (!msg?.id) {
+          // Payload incomplete (can happen when REPLICA IDENTITY is not FULL)
+          // Refetch all messages from API as fallback
+          console.warn('[realtime INSERT] incomplete payload, refetching messages')
+          fetch(`/api/messages/list?roomId=${roomId}&sessionId=${sessionId}`)
+            .then((r) => r.json())
+            .then((d) => { if (d.messages) setMessages(d.messages) })
+            .catch(console.error)
+          return
+        }
         setMessages((prev) => prev.find((m) => m.id === msg.id) ? prev : [...prev, msg])
         if (msg.sender_session_id !== sessionId) {
           unseenIds.current.add(msg.id)
@@ -127,15 +137,16 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
       }
     )
 
-    // Seen & Content updates — update seen_at, viewed_at, and content on the matching message
+    // Seen & Content updates — merge entire updated row to catch all field changes
     ch.on('postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
       (payload) => {
         const upd = payload.new as MessageWithMeta
+        if (!upd?.id) return
         setMessages((prev) =>
           prev.map((m) =>
             m.id === upd.id
-              ? { ...m, seen_at: upd.seen_at, viewed_at: upd.viewed_at, content: upd.content }
+              ? { ...m, ...upd }
               : m
           )
         )
