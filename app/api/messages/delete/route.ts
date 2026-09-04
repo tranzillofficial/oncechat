@@ -21,7 +21,28 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'Message not found' }, { status: 404 })
     }
 
-    if (message.sender_session_id !== sessionId) {
+    let isAuthorized = message.sender_session_id === sessionId
+    if (!isAuthorized) {
+      const { data: currentSession } = await supabase
+        .from('sessions')
+        .select('visitor_id')
+        .eq('id', sessionId)
+        .maybeSingle()
+
+      if (currentSession?.visitor_id) {
+        const { data: senderSession } = await supabase
+          .from('sessions')
+          .select('visitor_id')
+          .eq('id', message.sender_session_id)
+          .maybeSingle()
+
+        if (senderSession?.visitor_id === currentSession.visitor_id) {
+          isAuthorized = true
+        }
+      }
+    }
+
+    if (!isAuthorized) {
       return Response.json({ error: 'Unauthorized to delete this message' }, { status: 403 })
     }
 

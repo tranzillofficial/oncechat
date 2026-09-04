@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient()
 
     // Validate session exists (table: sessions)
-    const { data: session } = await supabase.from('sessions').select('id').eq('id', sessionId).maybeSingle()
+    const { data: session } = await supabase.from('sessions').select('id, visitor_id').eq('id', sessionId).maybeSingle()
     if (!session) return Response.json({ error: 'Invalid session' }, { status: 401 })
 
     const { data: room } = await supabase.from('rooms')
@@ -27,19 +27,30 @@ export async function POST(req: NextRequest) {
 
     if (!room) return Response.json({ error: `Room "${roomName}" does not exist or is closed` }, { status: 404 })
 
-    // Fetch active members
-    const { data: activeMembers } = await supabase
+    // Fetch all visitor sessions for this visitor
+    let visitorSessionIds: string[] = [sessionId]
+    if (session.visitor_id) {
+      const { data: vSessions } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('visitor_id', session.visitor_id)
+      if (vSessions?.length) {
+        visitorSessionIds = vSessions.map((s) => s.id)
+      }
+    }
+
+    // Fetch members of this room
+    const { data: allMembers } = await supabase
       .from('room_members')
-      .select('id, session_id, username')
+      .select('id, session_id, username, is_active')
       .eq('room_id', room.id)
-      .eq('is_active', true)
 
-    // Auto-clean stale members whose session last_seen is > 30 seconds old
-    const staleThreshold = new Date(Date.now() - 30 * 1000).toISOString()
-    const trulyActiveMembers: typeof activeMembers = []
+    // Auto-clean stale members whose session last_seen is > 5 minutes (300s) old
+    const staleThreshold = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const activeMembers: typeof allMembers = []
 
-    if (activeMembers?.length) {
-      const sessionIds = activeMembers.map((m) => m.session_id)
+    if (allMembers?.length) {
+      const sessionIds = Array.from(new Set(allMembers.map((m) => m.session_id)))
       const { data: activeSessions } = await supabase
         .from('sessions')
         .select('id, last_seen')
@@ -47,37 +58,50 @@ export async function POST(req: NextRequest) {
 
       const sessionMap = new Map(activeSessions?.map((s) => [s.id, s]))
 
-      for (const m of activeMembers) {
+      for (const m of allMembers) {
         const sess = sessionMap.get(m.session_id)
         const isStale = !sess || !sess.last_seen || sess.last_seen < staleThreshold
+        const isCurrentVisitor = visitorSessionIds.includes(m.session_id)
 
-        if (isStale && m.session_id !== sessionId) {
+        if (isStale && !isCurrentVisitor && m.is_active) {
           // Deactivate stale member
           await supabase
             .from('room_members')
             .update({ is_active: false, left_at: new Date().toISOString() })
             .eq('id', m.id)
-        } else {
-          trulyActiveMembers?.push(m)
+        } else if (m.is_active && !isCurrentVisitor) {
+          activeMembers.push(m)
         }
       }
     }
 
-    const count = trulyActiveMembers?.length ?? 0
-    const existingMember = trulyActiveMembers?.find((m) => m.session_id === sessionId)
+    // Check if requesting user is already in room_members (by session_id or visitor_id)
+    const existingMember = allMembers?.find((m) => visitorSessionIds.includes(m.session_id))
+    const count = activeMembers.length
 
     if (!existingMember && count >= 2) {
       return Response.json({ error: 'Room is full (max 2 people)' }, { status: 403 })
     }
 
-    // Check for duplicate username using truly active members
-    const dup = trulyActiveMembers?.find((m) => m.username === trimmedUser && m.session_id !== sessionId)
+    // Check for duplicate username using other active members
+    const dup = activeMembers.find((m) => m.username === trimmedUser && !visitorSessionIds.includes(m.session_id))
     if (dup) return Response.json({ error: 'That username is already active in this room' }, { status: 409 })
 
     if (existingMember) {
-      // Refresh username and return existing member ID
-      await supabase.from('room_members').update({ username: trimmedUser, is_active: true }).eq('id', existingMember.id)
-      await supabase.from('sessions').update({ username: trimmedUser, last_seen: new Date().toISOString() }).eq('id', sessionId)
+      // Refresh username, session_id, and reactivate member
+      await supabase
+        .from('room_members')
+        .update({ username: trimmedUser, session_id: sessionId, is_active: true, left_at: null })
+        .eq('id', existingMember.id)
+      await supabase
+        .from('sessions')
+        .update({ username: trimmedUser, last_seen: new Date().toISOString() })
+        .eq('id', sessionId)
+
+      if (count + 1 >= 2 && room.status === 'waiting') {
+        await supabase.from('rooms').update({ status: 'active' }).eq('id', room.id)
+      }
+
       return Response.json({ roomId: room.id, memberId: existingMember.id })
     }
 
@@ -95,7 +119,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Activate room when 2nd member joins
-    if ((count ?? 0) + 1 >= 2)
+    if (count + 1 >= 2)
       await supabase.from('rooms').update({ status: 'active' }).eq('id', room.id)
 
     return Response.json({ roomId: room.id, memberId: member!.id })

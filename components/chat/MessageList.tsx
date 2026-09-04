@@ -68,8 +68,8 @@ export default function MessageList({
     <div className="flex-1 overflow-y-auto flex flex-col gap-0.5 px-4 py-4"
       role="log" aria-label="Chat messages" aria-live="polite">
       {visibleMessages.map((msg, i) => {
-        // Use sender_session_id — the real DB column name
-        const isOwn    = msg.sender_session_id === sessionId
+        // Use msg.is_own if present (derived from visitor session history), fallback to sender_session_id check
+        const isOwn    = msg.is_own !== undefined ? msg.is_own : (msg.sender_session_id === sessionId)
         const prev     = i > 0 ? visibleMessages[i - 1] : null
         const showName = !isOwn && (!prev || prev.sender_session_id !== msg.sender_session_id)
         // seen_at is a timestamp (non-null = seen); derive boolean for the check icon

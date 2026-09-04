@@ -87,7 +87,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Create session (table: sessions)
+    const existingSessionId = body.sessionId as string | undefined
+
+    if (existingSessionId) {
+      const { data: existingSess } = await supabase
+        .from('sessions')
+        .select('id, visitor_id')
+        .eq('id', existingSessionId)
+        .maybeSingle()
+
+      if (existingSess && existingSess.visitor_id === visitorId) {
+        await supabase.from('sessions').update({ last_seen: now, is_active: true }).eq('id', existingSessionId)
+        return Response.json({ sessionId: existingSess.id, visitorId })
+      }
+    }
+
+    // Create new session if no existing session was matched
     const { data: session, error: sErr } = await supabase
       .from('sessions')
       .insert({ visitor_id: visitorId, username: 'anonymous', is_active: true })

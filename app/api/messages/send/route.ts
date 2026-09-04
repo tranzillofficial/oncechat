@@ -24,15 +24,19 @@ export async function POST(req: NextRequest) {
       .from('sessions').select('id').eq('id', sessionId).maybeSingle()
     if (!session) return Response.json({ error: 'Invalid session' }, { status: 401 })
 
-    // Verify the caller is an active member of the room
+    // Verify the caller is a member of the room
     const { data: member } = await supabase
       .from('room_members')
-      .select('id')
+      .select('id, is_active')
       .eq('session_id', sessionId)
       .eq('room_id', roomId)
-      .eq('is_active', true)
       .maybeSingle()
-    if (!member) return Response.json({ error: 'Not an active member of this room' }, { status: 403 })
+    if (!member) return Response.json({ error: 'Not a member of this room' }, { status: 403 })
+
+    // Ensure member is active
+    if (!member.is_active) {
+      await supabase.from('room_members').update({ is_active: true, left_at: null }).eq('id', member.id)
+    }
 
     // Insert via service role — bypasses RLS
     const { data: msg, error: insertErr } = await supabase
