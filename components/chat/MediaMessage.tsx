@@ -18,7 +18,8 @@ interface MediaMessageProps {
 const OTV_SECONDS = 30
 
 // ─── Screenshot protection hook ───────────────────────────────────────────
-// Listens for PrintScreen, Windows Snipping Tool (Win+Shift+S), and Cmd+Shift+3/4.
+// Detects PrintScreen, Win snipping tool, Mac shortcuts, AND visibilitychange
+// (triggered on Android when the system screenshot overlay appears).
 function useScreenshotProtection(active: boolean) {
   const [blurred, setBlurred] = useState(false)
 
@@ -31,31 +32,30 @@ function useScreenshotProtection(active: boolean) {
 
     function onKeyDown(e: KeyboardEvent) {
       // PrintScreen key
-      if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
-        triggerBlur()
-      }
-      // Windows Snipping Tool: Win + Shift + S
-      if (e.shiftKey && (e.key === 'S' || e.key === 's') && (e.metaKey || e.ctrlKey)) {
-        triggerBlur()
-      }
-      // Mac Screenshot: Cmd + Shift + 3/4/5
-      if (e.metaKey && e.shiftKey && ['3', '4', '5'].includes(e.key)) {
-        triggerBlur()
-      }
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen') triggerBlur()
+      // Windows Snipping Tool: Win+Shift+S or Ctrl+Shift+S
+      if (e.shiftKey && (e.key === 'S' || e.key === 's') && (e.metaKey || e.ctrlKey)) triggerBlur()
+      // Mac Screenshot: Cmd+Shift+3/4/5
+      if (e.metaKey && e.shiftKey && ['3', '4', '5'].includes(e.key)) triggerBlur()
     }
 
     function onKeyUp(e: KeyboardEvent) {
-      if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
-        triggerBlur()
-      }
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen') triggerBlur()
+    }
+
+    // On Android, taking a screenshot triggers a brief visibility loss
+    function onVisibilityChange() {
+      if (document.visibilityState === 'hidden') triggerBlur()
     }
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [active])
 
@@ -145,29 +145,51 @@ function Lightbox({
 }
 
 // ─── Protected image thumbnail ────────────────────────────────────────────
+// • Starts blurred by default (screenshot deterrent)
+// • Reveals on press-and-hold (pointerdown → pointerup/leave)
+// • A transparent overlay blocks right-click save and iOS long-press save
 function ProtectedImage({
   src,
   width,
   height,
   className,
   onClick,
-  blurred,
+  screenshotBlurred,   // blurred due to detected screenshot attempt
+  forceBlur,           // always blurred (e.g. OTV during screenshot)
 }: {
   src: string
   width: number
   height: number
   className?: string
   onClick?: () => void
-  blurred: boolean
+  screenshotBlurred: boolean
+  forceBlur?: boolean
 }) {
+  // Image starts hidden; user must press-and-hold to view
+  const [revealed, setRevealed] = useState(false)
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function onPointerDown() {
+    holdTimer.current = setTimeout(() => setRevealed(true), 120)
+  }
+  function onPointerUp() {
+    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null }
+  }
+  function onPointerLeave() {
+    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null }
+    setRevealed(false)
+  }
+
+  const isBlurred = forceBlur || screenshotBlurred || !revealed
+
   return (
     <div
-      className="relative cursor-pointer"
+      className="relative"
+      style={{ userSelect: 'none', WebkitUserSelect: 'none', cursor: 'pointer' }}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
       onClick={onClick}
-      style={{
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-      }}
       onContextMenu={(e) => e.preventDefault()}
     >
       <Image
@@ -179,13 +201,42 @@ function ProtectedImage({
         unoptimized
         draggable={false}
         style={{
-          filter: blurred ? 'blur(20px) brightness(0.25)' : 'none',
-          transition: 'filter 0.15s',
+          filter: isBlurred ? 'blur(18px) brightness(0.2)' : 'none',
+          transition: 'filter 0.2s ease',
           pointerEvents: 'none',
           WebkitTouchCallout: 'none' as 'none',
+          display: 'block',
         }}
         onContextMenu={(e) => e.preventDefault()}
       />
+      {/* Transparent overlay — blocks right-click, long-press save, and drag on all platforms */}
+      <div
+        style={{
+          position: 'absolute', inset: 0,
+          background: 'transparent',
+          WebkitTouchCallout: 'none',
+          userSelect: 'none',
+        } as React.CSSProperties}
+        onContextMenu={(e) => e.preventDefault()}
+        aria-hidden="true"
+      />
+      {/* "Hold to view" hint shown while blurred */}
+      {isBlurred && !forceBlur && (
+        <div
+          style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexDirection: 'column', gap: '4px',
+            pointerEvents: 'none',
+          }}
+        >
+          <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.8" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 11V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v5m0 0a6 6 0 0 0 12 0m-12 0H4m14 0h2" strokeLinecap="round"/>
+            <circle cx="12" cy="17" r="4"/>
+          </svg>
+          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', fontWeight: 500 }}>Hold to view</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -369,7 +420,8 @@ export default function MediaMessage({
               height={180}
               className="rounded-xl object-cover w-full max-w-[210px] max-h-[160px]"
               onClick={() => setLightboxOpen(true)}
-              blurred={blurred}
+              screenshotBlurred={blurred}
+              forceBlur={false}
             />
           )}
           {/* Countdown overlay */}
@@ -432,7 +484,8 @@ export default function MediaMessage({
           height={180}
           className="rounded-xl object-cover w-full max-w-[210px] max-h-[160px]"
           onClick={() => setLightboxOpen(true)}
-          blurred={blurred || (oneTimeView && isOwn)}
+          screenshotBlurred={blurred}
+          forceBlur={oneTimeView && isOwn}
         />
       </div>
 

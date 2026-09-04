@@ -34,7 +34,7 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   const channelRef    = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const pcRef         = useRef<RTCPeerConnection | null>(null)
   const localRef      = useRef<MediaStream | null>(null)
-  const remoteAudio   = useRef<HTMLAudioElement | null>(null)
+  const remoteVideo   = useRef<HTMLVideoElement | null>(null)
   const pendingOffer  = useRef<RTCSessionDescriptionInit | null>(null)
   const pendingIces   = useRef<RTCIceCandidateInit[]>([])
   const ringTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -64,7 +64,7 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   const closePC = useCallback(() => {
     pcRef.current?.close();         pcRef.current     = null
     localRef.current?.getTracks().forEach(t => t.stop()); localRef.current = null
-    if (remoteAudio.current) remoteAudio.current.srcObject = null
+    if (remoteVideo.current) remoteVideo.current.srcObject = null
     if (ringTimer.current)   { clearTimeout(ringTimer.current); ringTimer.current = null }
     pendingIces.current  = []
     pendingOffer.current = null
@@ -109,10 +109,12 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
       }
     }
 
-    // Attach remote audio stream
+    // Attach remote audio stream — using a <video playsInline> element so mobile
+    // browsers route audio through the earpiece instead of the loudspeaker.
     pc.ontrack = (e) => {
-      if (remoteAudio.current && e.streams[0]) {
-        remoteAudio.current.srcObject = e.streams[0]
+      if (remoteVideo.current && e.streams[0]) {
+        remoteVideo.current.srcObject = e.streams[0]
+        remoteVideo.current.play().catch(() => {/* autoplay policy — user gesture already happened via call accept */})
       }
     }
 
@@ -285,13 +287,10 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, sessionId])  // stable — refs handle mutable state
 
-  // Create the remote audio element once (can't use JSX <audio> with srcObject)
-  useEffect(() => {
-    const audio = new Audio()
-    audio.autoplay = true
-    remoteAudio.current = audio
-    return () => { audio.pause() }
-  }, [])
+  // NOTE: remoteVideo ref is wired to a hidden <video playsInline> in the JSX below.
+  // We intentionally do NOT use new Audio() here — on mobile, <video playsInline>
+  // routes WebRTC streams through the earpiece (like a phone call) rather than
+  // the loudspeaker that Audio() always uses.
 
   // Full cleanup on unmount
   useEffect(() => () => { closePC() }, [closePC])
@@ -305,6 +304,16 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
+      {/* Hidden video element — audio only, playsInline routes to earpiece on mobile */}
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video
+        ref={remoteVideo}
+        playsInline
+        autoPlay
+        muted={false}
+        style={{ display: 'none', width: 0, height: 0, position: 'absolute', pointerEvents: 'none' }}
+        aria-hidden="true"
+      />
       {/* ── Call trigger button (shown in header when idle) ───────────────── */}
       <button
         onClick={callState === 'idle' ? startCall : undefined}
