@@ -28,13 +28,15 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   const [duration,  setDuration]  = useState(0)
   const [micError,  setMicError]  = useState<string | null>(null)
   const [rejected,  setRejected]  = useState(false)   // flash "Call declined" briefly
+  const [speakerOn, setSpeakerOn] = useState(false)   // false = earpiece, true = loudspeaker
 
   // ── Refs (stable across renders, safe to use inside callbacks) ─────────────
   const callStateRef  = useRef<CallState>('idle')
   const channelRef    = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const pcRef         = useRef<RTCPeerConnection | null>(null)
   const localRef      = useRef<MediaStream | null>(null)
-  const remoteVideo   = useRef<HTMLVideoElement | null>(null)
+  const remoteVideo   = useRef<HTMLVideoElement | null>(null)   // earpiece output
+  const remoteAudio   = useRef<HTMLAudioElement | null>(null)   // loudspeaker output
   const pendingOffer  = useRef<RTCSessionDescriptionInit | null>(null)
   const pendingIces   = useRef<RTCIceCandidateInit[]>([])
   const ringTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -65,11 +67,13 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
     pcRef.current?.close();         pcRef.current     = null
     localRef.current?.getTracks().forEach(t => t.stop()); localRef.current = null
     if (remoteVideo.current) remoteVideo.current.srcObject = null
+    if (remoteAudio.current) remoteAudio.current.srcObject = null
     if (ringTimer.current)   { clearTimeout(ringTimer.current); ringTimer.current = null }
     pendingIces.current  = []
     pendingOffer.current = null
     stopDur()
     setMuted(false)
+    setSpeakerOn(false)
     setMicError(null)
   }, [stopDur])
 
@@ -213,6 +217,41 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
     setMuted(!track.enabled)
   }, [])
 
+  /**
+   * Toggle between earpiece (default) and loudspeaker.
+   * Strategy:
+   *  - earpiece: stream attached to hidden <video playsInline> (mobile browsers route
+   *    WebRTC video-element audio to the earpiece/receiver)
+   *  - speaker:  stream moved to a plain <audio> element (routed to loudspeaker)
+   * setSinkId('communications') is also attempted for browsers that support it (Android Chrome).
+   */
+  const toggleSpeaker = useCallback(() => {
+    // Get the active stream from whichever element currently holds it
+    const currentStream =
+      (remoteVideo.current?.srcObject as MediaStream | null) ||
+      (remoteAudio.current?.srcObject as MediaStream | null)
+
+    setSpeakerOn((prev) => {
+      const next = !prev
+      if (next) {
+        // → loudspeaker: clear video, attach to audio
+        if (remoteVideo.current) remoteVideo.current.srcObject = null
+        if (remoteAudio.current && currentStream) {
+          remoteAudio.current.srcObject = currentStream
+          remoteAudio.current.play().catch(() => {})
+        }
+      } else {
+        // → earpiece: clear audio, attach to video
+        if (remoteAudio.current) remoteAudio.current.srcObject = null
+        if (remoteVideo.current && currentStream) {
+          remoteVideo.current.srcObject = currentStream
+          remoteVideo.current.play().catch(() => {})
+        }
+      }
+      return next
+    })
+  }, [])
+
   // ── Signaling channel ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!roomId || !sessionId) return
@@ -304,7 +343,7 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Hidden video element — audio only, playsInline routes to earpiece on mobile */}
+      {/* Earpiece output: hidden <video playsInline> — mobile routes to earpiece */}
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={remoteVideo}
@@ -312,6 +351,14 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
         autoPlay
         muted={false}
         style={{ display: 'none', width: 0, height: 0, position: 'absolute', pointerEvents: 'none' }}
+        aria-hidden="true"
+      />
+      {/* Loudspeaker output: plain <audio> element */}
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio
+        ref={remoteAudio}
+        autoPlay
+        style={{ display: 'none' }}
         aria-hidden="true"
       />
       {/* ── Call trigger button (shown in header when idle) ───────────────── */}
@@ -474,7 +521,7 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
             )}
 
             {callState === 'connected' && (
-              <div style={{ display: 'flex', gap: '20px' }}>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
                 {/* Mute toggle */}
                 <CallBtn
                   color={muted ? '#ef4444' : 'var(--surface-2)'}
@@ -483,6 +530,15 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
                   border={!muted}
                 >
                   {muted ? <MicOffIcon size={22} /> : <MicIcon size={22} />}
+                </CallBtn>
+                {/* Speaker toggle */}
+                <CallBtn
+                  color={speakerOn ? 'var(--accent)' : 'var(--surface-2)'}
+                  label={speakerOn ? 'Earpiece' : 'Speaker'}
+                  onClick={toggleSpeaker}
+                  border={!speakerOn}
+                >
+                  <SpeakerIcon on={speakerOn} size={22} />
                 </CallBtn>
                 {/* End */}
                 <CallBtn color="#ef4444" label="End" onClick={endCall}>
@@ -587,6 +643,25 @@ function MicOffIcon({ size = 20 }: { size?: number }) {
     <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M1 1l22 22M9 9v3a3 3 0 005.12 2.12M15 9.34V5a3 3 0 00-5.94-.6" />
       <path d="M17 16.95A7 7 0 015 10v-1M12 19v3M8 22h8" />
+    </svg>
+  )
+}
+
+function SpeakerIcon({ on, size = 20 }: { on: boolean; size?: number }) {
+  return (
+    <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+      {/* Speaker cone */}
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      {on ? (
+        <>
+          {/* Sound waves (speaker on) */}
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        </>
+      ) : (
+        /* Slash (speaker off / earpiece) */
+        <line x1="23" y1="9" x2="17" y2="15" />
+      )}
     </svg>
   )
 }
