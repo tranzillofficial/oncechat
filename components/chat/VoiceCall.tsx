@@ -35,8 +35,7 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   const channelRef    = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const pcRef         = useRef<RTCPeerConnection | null>(null)
   const localRef      = useRef<MediaStream | null>(null)
-  const remoteVideo   = useRef<HTMLVideoElement | null>(null)   // earpiece output
-  const remoteAudio   = useRef<HTMLAudioElement | null>(null)   // loudspeaker output
+  const remoteAudio   = useRef<HTMLAudioElement | null>(null)
   const pendingOffer  = useRef<RTCSessionDescriptionInit | null>(null)
   const pendingIces   = useRef<RTCIceCandidateInit[]>([])
   const ringTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -66,7 +65,6 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   const closePC = useCallback(() => {
     pcRef.current?.close();         pcRef.current     = null
     localRef.current?.getTracks().forEach(t => t.stop()); localRef.current = null
-    if (remoteVideo.current) remoteVideo.current.srcObject = null
     if (remoteAudio.current) remoteAudio.current.srcObject = null
     if (ringTimer.current)   { clearTimeout(ringTimer.current); ringTimer.current = null }
     pendingIces.current  = []
@@ -81,10 +79,17 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   useEffect(() => { closePCRef.current = closePC }, [closePC])
   useEffect(() => { setStateRef.current = setS },   [setS])
 
-  /** Request microphone access */
+  /** Request microphone access with VoIP communication constraints */
   const getMic = useCallback(async (): Promise<MediaStream | null> => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      })
       localRef.current = stream
       setMicError(null)
       return stream
@@ -113,12 +118,11 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
       }
     }
 
-    // Attach remote audio stream — using a <video playsInline> element so mobile
-    // browsers route audio through the earpiece instead of the loudspeaker.
+    // Attach remote audio stream
     pc.ontrack = (e) => {
-      if (remoteVideo.current && e.streams[0]) {
-        remoteVideo.current.srcObject = e.streams[0]
-        remoteVideo.current.play().catch(() => {/* autoplay policy — user gesture already happened via call accept */})
+      if (remoteAudio.current && e.streams[0]) {
+        remoteAudio.current.srcObject = e.streams[0]
+        remoteAudio.current.play().catch(() => {/* autoplay policy */})
       }
     }
 
@@ -218,39 +222,44 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   }, [])
 
   /**
-   * Toggle between earpiece (default) and loudspeaker.
-   * Strategy:
-   *  - earpiece: stream attached to hidden <video playsInline> (mobile browsers route
-   *    WebRTC video-element audio to the earpiece/receiver)
-   *  - speaker:  stream moved to a plain <audio> element (routed to loudspeaker)
-   * setSinkId('communications') is also attempted for browsers that support it (Android Chrome).
+   * Toggle between earpiece and loudspeaker.
+   * On browsers that support HTMLMediaElement.setSinkId (Desktop / Android Chromium),
+   * we switch between 'default' (loudspeaker) and 'communications' or specific receiver device.
    */
-  const toggleSpeaker = useCallback(() => {
-    // Get the active stream from whichever element currently holds it
-    const currentStream =
-      (remoteVideo.current?.srcObject as MediaStream | null) ||
-      (remoteAudio.current?.srcObject as MediaStream | null)
+  const toggleSpeaker = useCallback(async () => {
+    const el = remoteAudio.current
+    const next = !speakerOn
+    setSpeakerOn(next)
 
-    setSpeakerOn((prev) => {
-      const next = !prev
-      if (next) {
-        // → loudspeaker: clear video, attach to audio
-        if (remoteVideo.current) remoteVideo.current.srcObject = null
-        if (remoteAudio.current && currentStream) {
-          remoteAudio.current.srcObject = currentStream
-          remoteAudio.current.play().catch(() => {})
+    if (el && 'setSinkId' in el) {
+      try {
+        if (next) {
+          // Loudspeaker mode
+          await (el as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> }).setSinkId('default')
+        } else {
+          // Earpiece mode — try finding specific communications or receiver audiooutput device
+          const devices = await navigator.mediaDevices?.enumerateDevices?.()
+          const earpiece = devices?.find(
+            (d) =>
+              d.kind === 'audiooutput' &&
+              (d.label.toLowerCase().includes('earpiece') ||
+               d.label.toLowerCase().includes('receiver') ||
+               d.label.toLowerCase().includes('phone') ||
+               d.deviceId === 'communications')
+          )
+          if (earpiece) {
+            await (el as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> }).setSinkId(earpiece.deviceId)
+          } else {
+            await (el as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> }).setSinkId('communications').catch(() => {
+              return (el as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> }).setSinkId('')
+            })
+          }
         }
-      } else {
-        // → earpiece: clear audio, attach to video
-        if (remoteAudio.current) remoteAudio.current.srcObject = null
-        if (remoteVideo.current && currentStream) {
-          remoteVideo.current.srcObject = currentStream
-          remoteVideo.current.play().catch(() => {})
-        }
+      } catch {
+        // Platform limitation (e.g. iOS Safari where audio routing is OS-controlled)
       }
-      return next
-    })
-  }, [])
+    }
+  }, [speakerOn])
 
   // ── Signaling channel ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -326,11 +335,6 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, sessionId])  // stable — refs handle mutable state
 
-  // NOTE: remoteVideo ref is wired to a hidden <video playsInline> in the JSX below.
-  // We intentionally do NOT use new Audio() here — on mobile, <video playsInline>
-  // routes WebRTC streams through the earpiece (like a phone call) rather than
-  // the loudspeaker that Audio() always uses.
-
   // Full cleanup on unmount
   useEffect(() => () => { closePC() }, [closePC])
 
@@ -343,21 +347,12 @@ export default function VoiceCall({ roomId, sessionId, username, otherUsername, 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Earpiece output: hidden <video playsInline> — mobile routes to earpiece */}
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <video
-        ref={remoteVideo}
-        playsInline
-        autoPlay
-        muted={false}
-        style={{ display: 'none', width: 0, height: 0, position: 'absolute', pointerEvents: 'none' }}
-        aria-hidden="true"
-      />
-      {/* Loudspeaker output: plain <audio> element */}
+      {/* Remote audio output */}
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio
         ref={remoteAudio}
         autoPlay
+        playsInline
         style={{ display: 'none' }}
         aria-hidden="true"
       />
