@@ -10,6 +10,7 @@ import MessageList from './MessageList'
 import MessageInput from './MessageInput'
 import TypingIndicator from './TypingIndicator'
 import OnlineStatus from './OnlineStatus'
+import VoiceCall from './VoiceCall'
 
 interface PresencePayload { username: string; online_at: string }
 
@@ -397,10 +398,21 @@ export default function ChatRoom({ roomName }: { roomName: string }) {
             <OnlineStatus username={otherUser ?? ''} isOnline={!!otherUser && otherOnline} />
           </div>
         </div>
-        <button onClick={handleLeave} className="text-xs px-3 py-1.5 rounded-lg"
-          style={{ color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.3)' }}>
-          Leave
-        </button>
+        <div className="flex items-center gap-2">
+          {roomId && (
+            <VoiceCall
+              roomId={roomId}
+              sessionId={sessionId ?? ''}
+              username={username ?? ''}
+              otherUsername={otherUser}
+              otherOnline={otherOnline}
+            />
+          )}
+          <button onClick={handleLeave} className="text-xs px-3 py-1.5 rounded-lg"
+            style={{ color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.3)' }}>
+            Leave
+          </button>
+        </div>
       </header>
 
       <MessageList
